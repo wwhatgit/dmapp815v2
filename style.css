@@ -2057,3 +2057,197 @@ td.task-ok { color: var(--green); }
   color: #4ade80;
   text-align: center;
 }
+
+/* ══ EDITABLE ZONE GRID (Links to Measure) ══════════════════════ */
+.links-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Zone header row */
+.ez-zone-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-left: 3px solid var(--blue);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ez-zone-hdr-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ez-zone-label {
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 700;
+}
+.ez-zone-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.ez-zone-move {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ez-move-lbl {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  white-space: nowrap;
+}
+.ez-move-input {
+  width: 38px;
+  padding: 3px 4px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: center;
+  outline: none;
+}
+.ez-move-input:focus { border-color: var(--blue); }
+.ez-move-btn {
+  background: var(--blue);
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 13px;
+  padding: 3px 7px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.ez-move-btn:hover { background: #1d4ed8; }
+
+/* Link row */
+.ez-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px 9px 12px;
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  transition: background 0.1s;
+}
+.ez-row:last-child { border-bottom: none; }
+.ez-row:hover { background: var(--bg3); }
+.ez-row-selected { background: rgba(250,204,21,0.08) !important; border-left-color: #facc15 !important; }
+
+.ez-seq-num {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.ez-link-info {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.ez-link-id {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--blue);
+  margin-bottom: 2px;
+}
+.ez-link-names {
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ez-link-svc {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.ez-fields {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.ez-field-grp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.ez-field-lbl {
+  font-size: 8px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.ez-field-input {
+  width: 36px;
+  padding: 4px 2px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.ez-field-input:focus { border-color: var(--blue); background: var(--bg4,#1e2235); }
+.ez-field-input::-webkit-outer-spin-button,
+.ez-field-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.ez-run-btn {
+  background: var(--green-bg);
+  border: 1px solid #bbf7d0;
+  color: var(--green);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 7px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 28px;
+  text-align: center;
+  transition: all 0.15s;
+}
+.ez-run-btn.ez-run-x1 {
+  background: var(--orange-bg);
+  border-color: #fde68a;
+  color: var(--orange);
+}
+
+/* Dead-mileage indicator row */
+.ez-dead-row {
+  padding: 5px 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--orange);
+  background: rgba(249,115,22,0.05);
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid rgba(249,115,22,0.3);
+}
+
+/* Plan links card — no bottom radius when list follows */
+#plan-links-card { margin-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; }
+#plan-export-card { border-radius: 0 0 var(--radius) var(--radius); border-top: none; }
+

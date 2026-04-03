@@ -330,7 +330,7 @@ function switchScreen(name){
   const tab = document.querySelector('.nav-tab[data-screen="'+name+'"]');
   if(tab) tab.classList.add('active');
   if(name==='task')     initTaskTab();
-  if(name==='planner')  { if(!S.plannerMap) initPlannerMap(); renderPlannerUI(); initPlannerSubTabs(); }
+  if(name==='planner')  { if(!S.plannerMap) initPlannerMap(); renderPlannerUI(); }
   if(name==='drive')    renderDriveConsole();
   if(name==='overview') renderOverview();
 }
@@ -719,18 +719,19 @@ function bindEvents(){
   });
 
   // Planner
-  // Planner buttons — use event delegation since elements may be hidden at init
+  // Planner — event delegation (elements may be hidden at init)
   document.getElementById('screen-planner').addEventListener('click', function(e){
     const btn = e.target.closest('button,a');
     if(!btn) return;
     const id = btn.id;
-    if(id==='optimise-btn')         { e.stopPropagation(); runOptimiser(); }
-    else if(id==='reset-order-btn') { e.stopPropagation(); resetPlanOrder(); }
-    else if(id==='start-job-btn')   { e.stopPropagation(); startJob(); }
-    else if(id==='copy-compact-btn'){ e.stopPropagation(); copyCompactPlan(); }
-    else if(id==='download-detailed-btn'){ e.stopPropagation(); downloadDetailedPlan(); }
-    else if(id==='copy-all-gmaps-btn')   { e.stopPropagation(); copyAllGmapsLinks(); }
-    else if(id==='share-plan-wa-btn')    { e.stopPropagation(); shareGmapsPlanWhatsApp(); }
+    if(id==='optimise-btn')              runOptimiser();
+    else if(id==='apply-zones-btn')      applyZoneSort();
+    else if(id==='reset-order-btn')      resetPlanOrder();
+    else if(id==='start-job-btn')        startJob();
+    else if(id==='copy-compact-btn')     copyCompactPlan();
+    else if(id==='download-detailed-btn')downloadDetailedPlan();
+    else if(id==='copy-all-gmaps-btn')   copyAllGmapsLinks();
+    else if(id==='share-plan-wa-btn')    shareGmapsPlanWhatsApp();
   });
   // Slider still needs direct binding
   const slider = document.getElementById('threshold-slider');
@@ -791,19 +792,14 @@ function renderPlannerUI(){
   const badge  = document.getElementById('plan-status-badge');
   const noTask = document.getElementById('planner-no-task');
 
-  // Init sub-tabs on first render
-  initPlannerSubTabs();
-
   if(!has){
     badge.textContent='Not Loaded'; badge.className='badge';
     if(noTask) noTask.style.display='block';
     document.getElementById('plan-summary-block').style.display='none';
-    const sb=document.getElementById('planner-subtab-bar');
-    if(sb) sb.style.display='none';
-    const pv=document.getElementById('planner-plan-view');
-    const mv=document.getElementById('planner-map-view');
-    if(pv) pv.style.display='none';
-    if(mv) mv.style.display='none';
+    ['optimise-card','planner-map-card','plan-links-card','plan-export-card'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.style.display='none';
+    });
+    document.getElementById('start-job-section').style.display='none';
     return;
   }
 
@@ -817,28 +813,24 @@ function renderPlannerUI(){
   document.getElementById('stat-stops').textContent = ss.size;
   document.getElementById('stat-runs').textContent  = S.plan.some(p=>!p.skipRun2)?'2':'1';
 
-  // Show optimise card (lives in top-cards, not in sub-tab views)
-  const optCard = document.getElementById('optimise-card');
-  if(optCard) optCard.style.display='';
+  ['optimise-card','planner-map-card','plan-links-card','plan-export-card'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display='';
+  });
+  document.getElementById('start-job-section').style.display='';
 
-  // Show sub-tab bar and switch to current sub-tab
-  const sb=document.getElementById('planner-subtab-bar');
-  if(sb) sb.style.display='';
-  switchPlannerTab(_plannerSubTab||'plan');
-
-  // Start top cards collapsed on first load
+  // Collapse Plan and Optimiser cards by default on first load
   ['load-body','optimise-body'].forEach(id=>{
     const body=document.getElementById(id);
     const arr =document.getElementById('arrow-'+id);
-    if(body&&!body._plannerInitialized){
+    if(body && !body._initDone){
       body.classList.remove('open');
       if(arr) arr.classList.remove('open');
-      body._plannerInitialized=true;
+      body._initDone = true;
     }
   });
 
   updateDistSummary();
-  if(S.plannerMap) updatePlannerMap();
+  updatePlannerMap();
   renderLinksList();
   renderPlanExport();
 }
@@ -938,175 +930,270 @@ function updatePlannerMap(){
 }
 
 function renderLinksList(){
-  const c=document.getElementById('plan-links-list');
+  const c = document.getElementById('plan-links-list');
   if(!c) return;
-  c.innerHTML='';
-  if(S.journeySteps&&S.journeySteps.length) renderZoneList(c);
-  else renderPlainList(c);
-  // Always update Share Plan after any re-render
-  renderPlanExport();
-}
+  c.innerHTML = '';
 
-function renderPlainList(c){
-  S.plan.forEach((link,i)=>{
-    const f=S.stops[link.fromStop],t=S.stops[link.toStop];
-    const ok=!!(f&&f.lat&&t&&t.lat);
-    let dead='';
-    if(i<S.plan.length-1&&ok){
-      const nf=S.stops[S.plan[i+1].fromStop];
-      if(nf&&nf.lat){const d=optHaversine(t.lat,t.lng,nf.lat,nf.lng);dead=d<20?'<span class="chain-badge">⛓</span>':'<span class="deadmile-badge">↝'+(d/1000).toFixed(2)+'km</span>';}
-    }
-    const skip2=S.totalRuns===2?'<span class="skip2-badge'+(link.skipRun2?' skip2-active':'')+'" data-idx="'+i+'">'+(link.skipRun2?'1× run':'2× runs')+'</span>':'';
-    const div=document.createElement('div');
-    div.className='link-item'+(ok?'':' no-coords');
-    div.dataset.idx=i;div.dataset.planidx=i;div.dataset.linkid=link.linkId;
-    div.innerHTML='<div class="seq-badge" data-idx="'+i+'">'+(i+1)+'</div>'
-      +'<div class="li-id">'+link.linkId+'</div>'
-      +'<div class="li-info"><div class="li-stops">'+link.fromStop+' → '+link.toStop+'</div>'
-      +'<div class="li-svc">'+(f?f.name:link.fromStop)+' → '+(t?t.name:link.toStop)+(link.service&&link.service!=='—'?' | '+link.service:'')+'</div>'
-      +'<div class="li-badges">'+dead+skip2+'</div></div>'
-      +'<button class="li-remove" data-idx="'+i+'" title="Remove from plan">✕</button>';
-    div.addEventListener('click',e=>{if(!e.target.closest('.skip2-badge,.seq-badge,.li-remove'))onListLinkClick(i);});
-    c.appendChild(div);
-  });
-  c.querySelectorAll('.seq-badge').forEach(b=>{
-    b.addEventListener('click',e=>{
-      e.stopPropagation();
-      const from=parseInt(b.dataset.idx);
-      const toStr=prompt('Move "'+S.plan[from].linkId+'" to position (1–'+S.plan.length+'):','');
-      if(!toStr)return;const to=parseInt(toStr)-1;
-      if(isNaN(to)||to<0||to>=S.plan.length){toast('Invalid position','error');return;}
-      const m=S.plan.splice(from,1)[0];S.plan.splice(to,0,m);
-      S.plan.forEach((l,i)=>l.sequence=i+1);
-      renderLinksList();updatePlannerMap();updateDistSummary();
-      toast(m.linkId+' moved to #'+(to+1));
-    });
-  });
-  c.querySelectorAll('.skip2-badge').forEach(b=>{
-    b.addEventListener('click',e=>{e.stopPropagation();const i=parseInt(b.dataset.idx);S.plan[i].skipRun2=!S.plan[i].skipRun2;renderLinksList();updateDistSummary();});
-  });
-  c.querySelectorAll('.li-remove').forEach(b=>{
-    b.addEventListener('click',e=>{
-      e.stopPropagation();
-      const i=parseInt(b.dataset.idx);
-      const lid=S.plan[i].linkId;
-      if(!confirm('Remove "'+lid+'" from plan?'))return;
-      S.plan.splice(i,1);
-      S.plan.forEach((l,j)=>l.sequence=j+1);
-      S.journeySteps=[];S.clusterResult=null;
-      renderLinksList();updatePlannerMap();updateDistSummary();
-      toast(lid+' removed','info');
-    });
-  });
-}
+  if(!S.plan || !S.plan.length){
+    c.innerHTML = '<div class="empty-state">No links loaded.</div>';
+    return;
+  }
 
-function renderZoneList(c){
-  if(!c._zc)c._zc={};
-  const zoneMap=new Map();
-  S.journeySteps.forEach(step=>{
-    if(!zoneMap.has(step.clusterId))zoneMap.set(step.clusterId,{clusterId:step.clusterId,clusterSeq:step.clusterSeq,links:[],run2:[]});
-    const z=zoneMap.get(step.clusterId);
-    if(step.run===1&&!z.links.includes(step.planIdx))z.links.push(step.planIdx);
-    if(step.run===2&&!z.run2.includes(step.planIdx))z.run2.push(step.planIdx);
+  // Group plan by zone number (S.plan[i].zone)
+  // Build zone groups sorted numerically
+  const zoneMap = new Map();
+  S.plan.forEach((link, pi)=>{
+    const z = link.zone != null ? link.zone : 1;
+    if(!zoneMap.has(z)) zoneMap.set(z, []);
+    zoneMap.get(z).push(pi);
   });
-  let gseq=0;
-  const zones=[...zoneMap.values()].sort((a,b)=>a.clusterSeq-b.clusterSeq);
-  zones.forEach(zone=>{
-    const ci=zone.clusterId%CL_COLS.length;
-    const isCollapsed=c._zc[zone.clusterId]===true;
-    const skipCount=zone.links.filter(pi=>S.plan[pi]&&S.plan[pi].skipRun2).length;
-    const hdr=document.createElement('div');
-    hdr.className='zone-hdr ch-'+ci;hdr.dataset.zoneid=zone.clusterId;
-    hdr.innerHTML='<div class="zone-hdr-left">'
-      +'<span class="zone-ca '+(isCollapsed?'':'open')+'">'+(isCollapsed?'▶':'▼')+'</span>'
-      +'<span>Zone '+(zone.clusterSeq+1)+'</span>'
-      +'<span class="zone-meta">'+zone.links.length+' link'+(zone.links.length!==1?'s':'')+(S.totalRuns===2?' · R1+R2'+(skipCount?' ('+skipCount+' ×1)':''):'')+'</span>'
-      +'</div><span class="zone-km" id="zkm-'+zone.clusterId+'">—</span>';
-    hdr.addEventListener('click',()=>{c._zc[zone.clusterId]=!c._zc[zone.clusterId];renderLinksList();});
-    c.appendChild(hdr);
-    if(!isCollapsed){
-      zone.links.forEach(planIdx=>{
-        gseq++;
-        const link=S.plan[planIdx];if(!link)return;
-        const f=S.stops[link.fromStop],t=S.stops[link.toStop];
-        const ok=!!(f&&f.lat&&t&&t.lat);
-        const isSkip=link.skipRun2;
-        let dead='';
-        if(ok){
-          const si=S.journeySteps.findIndex(s=>s.planIdx===planIdx&&s.run===1);
-          if(si>=0&&si<S.journeySteps.length-1){
-            const nxt=S.journeySteps[si+1],nf=S.stops[S.plan[nxt.planIdx]&&S.plan[nxt.planIdx].fromStop];
-            if(nf&&nf.lat){const d=optHaversine(t.lat,t.lng,nf.lat,nf.lng);if(d>20)dead='<span class="deadmile-badge">↝'+(d/1000).toFixed(2)+'km</span>';}
-          }
-        }
-        const runBadges=S.totalRuns===2?('<span class="run-badge-sm r1">R1</span>'+(isSkip?'<span class="run-badge-sm skip-r2">no R2</span>':'<span class="run-badge-sm r2">R2</span>')):'<span class="run-badge-sm r1">R1</span>';
-        const skipBtn=S.totalRuns===2?'<span class="skip2-badge'+(isSkip?' skip2-active':'')+'" data-planidx="'+planIdx+'">'+(isSkip?'1× run':'2× runs')+'</span>':'';
-        const div=document.createElement('div');
-        div.className='link-item cl-'+ci+(ok?'':' no-coords');
-        div.dataset.planidx=planIdx;div.dataset.linkid=link.linkId;div.dataset.zoneid=zone.clusterId;
-        div.innerHTML='<div class="seq-badge seq-zone" data-planidx="'+planIdx+'" data-zoneid="'+zone.clusterId+'" data-fromzone="'+zone.clusterId+'">'+gseq+'</div>'
-          +'<div class="li-id">'+link.linkId+'</div>'
-          +'<div class="li-info"><div class="li-stops">'+link.fromStop+' → '+link.toStop+'</div>'
-          +'<div class="li-svc">'+(f?f.name:link.fromStop)+' → '+(t?t.name:link.toStop)+(link.service&&link.service!=='—'?' | '+link.service:'')+'</div>'
-          +'<div class="li-badges">'+runBadges+dead+skipBtn+'</div></div>';
-        div.addEventListener('click',e=>{if(!e.target.closest('.skip2-badge,.seq-zone'))onListLinkClick(planIdx);});
-        c.appendChild(div);
-      });
+  const sortedZones = [...zoneMap.keys()].sort((a,b)=>a-b);
+
+  // Update zone badge in card header
+  const lb = document.getElementById('links-zone-badge');
+  if(lb) lb.textContent = sortedZones.length+' zone'+(sortedZones.length!==1?'s':'');
+
+  const totalZones = sortedZones.length;
+
+  sortedZones.forEach((zNum, zi)=>{
+    const planIdxs = zoneMap.get(zNum);
+    // Sort by seq within zone
+    planIdxs.sort((a,b)=>(S.plan[a].seq||0)-(S.plan[b].seq||0));
+    const col = CL_COLS[zi % CL_COLS.length];
+
+    // Zone header
+    const zhdr = document.createElement('div');
+    zhdr.className = 'ez-zone-hdr';
+    zhdr.style.borderLeftColor = col;
+    zhdr.style.color = col;
+
+    let zoneKm = 0;
+    planIdxs.forEach(pi=>{
+      const link=S.plan[pi];
+      const f=S.stops[link.fromStop]||{}, t=S.stops[link.toStop]||{};
+      if(f.lat&&t.lat) zoneKm += optHaversine(f.lat,f.lng,t.lat,t.lng)/1000;
+    });
+
+    zhdr.innerHTML =
+      '<div class="ez-zone-hdr-left">'
+      + '<span class="ez-zone-label">Zone '+zNum+'</span>'
+      + '<span class="ez-zone-meta">'+planIdxs.length+' link'+(planIdxs.length!==1?'s':'')
+      + (zoneKm>0?' · '+zoneKm.toFixed(1)+' km':'')+'</span>'
+      + '</div>'
+      + '<div class="ez-zone-move">'
+      + '<span class="ez-move-lbl">Move to pos</span>'
+      + '<input type="number" class="ez-move-input" data-zone="'+zNum+'" min="1" max="99" placeholder="#" inputmode="numeric"/>'
+      + '<button class="ez-move-btn" data-zone="'+zNum+'">→</button>'
+      + '</div>';
+    c.appendChild(zhdr);
+
+    // Link rows
+    planIdxs.forEach((pi, li)=>{
+      const link = S.plan[pi];
+      const f = S.stops[link.fromStop]||{name:link.fromStop};
+      const t = S.stops[link.toStop]  ||{name:link.toStop};
+      const isSelected = S.selectedLinkIdx === pi;
+      const runs = link.skipRun2 ? 1 : 2;
+
+      const row = document.createElement('div');
+      row.className = 'ez-row' + (isSelected?' ez-row-selected':'');
+      row.style.borderLeftColor = col;
+      row.dataset.pi = pi;
+
+      row.innerHTML =
+        '<div class="ez-seq-num" style="color:'+col+'">'+(li+1)+'</div>'
+        + '<div class="ez-link-info" data-pi="'+pi+'">'
+        +   '<div class="ez-link-id">'+link.linkId+'</div>'
+        +   '<div class="ez-link-names">'+escHtml(f.name||link.fromStop)+' → '+escHtml(t.name||link.toStop)+'</div>'
+        +   (link.service&&link.service!=='—'?'<div class="ez-link-svc">'+escHtml(link.service)+'</div>':'')
+        + '</div>'
+        + '<div class="ez-fields">'
+        +   '<div class="ez-field-grp">'
+        +     '<label class="ez-field-lbl">Zone</label>'
+        +     '<input type="number" class="ez-field-input ez-zone-input" data-pi="'+pi+'" value="'+zNum+'" min="0" max="999" inputmode="numeric"/>'
+        +   '</div>'
+        +   '<div class="ez-field-grp">'
+        +     '<label class="ez-field-lbl">Seq</label>'
+        +     '<input type="number" class="ez-field-input ez-seq-input" data-pi="'+pi+'" value="'+(link.seq||li+1)+'" min="1" max="999" inputmode="numeric"/>'
+        +   '</div>'
+        +   '<button class="ez-run-btn'+(runs===1?' ez-run-x1':'')+'" data-pi="'+pi+'">'
+        +     (runs===1?'×1':'×2')
+        +   '</button>'
+        + '</div>';
+
+      c.appendChild(row);
+    });
+
+    // Dead-mileage indicator to next zone
+    if(zi < totalZones-1){
+      const lastPi  = planIdxs[planIdxs.length-1];
+      const nextZ   = sortedZones[zi+1];
+      const nextIdxs= zoneMap.get(nextZ);
+      const firstPi = nextIdxs&&nextIdxs.length?nextIdxs[0]:-1;
+      if(firstPi>=0 && S.plan[lastPi] && S.plan[firstPi]){
+        const t2 = S.stops[S.plan[lastPi].toStop]  ||{};
+        const f2 = S.stops[S.plan[firstPi].fromStop]||{};
+        let deadStr='—';
+        if(t2.lat&&f2.lat) deadStr=(optHaversine(t2.lat,t2.lng,f2.lat,f2.lng)/1000).toFixed(1)+' km';
+        const dead = document.createElement('div');
+        dead.className = 'ez-dead-row';
+        dead.innerHTML = '↝ Dead-mileage to Zone '+nextZ+': '+deadStr;
+        c.appendChild(dead);
+      }
     }
-    setTimeout(()=>{
-      const el=document.getElementById('zkm-'+zone.clusterId);if(!el)return;
-      let km=0;zone.links.forEach(pi=>{const l=S.plan[pi],f=S.stops[l&&l.fromStop],t=S.stops[l&&l.toStop];if(f&&t&&f.lat&&t.lat)km+=optHaversine(f.lat,f.lng,t.lat,t.lng)/1000;});
-      el.textContent=km.toFixed(2)+' km';
-    },0);
   });
-  c.querySelectorAll('.skip2-badge[data-planidx]').forEach(b=>{
-    b.addEventListener('click',e=>{
-      e.stopPropagation();
-      const pi=parseInt(b.dataset.planidx);
-      S.plan[pi].skipRun2=!S.plan[pi].skipRun2;
-      rebuildJourneyFromZones();renderLinksList();updateDistSummary();
+
+  // ── Event listeners ──
+
+  // Link row click → highlight on map
+  c.querySelectorAll('.ez-link-info').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const pi = parseInt(el.dataset.pi);
+      S.selectedLinkIdx = pi;
+      updatePlannerMap();
+      // Scroll map into view
+      const mapEl = document.getElementById('planner-map');
+      if(mapEl) mapEl.scrollIntoView({behavior:'smooth', block:'center'});
+      // Re-render to show highlight
+      renderLinksList();
     });
   });
-  c.querySelectorAll('.seq-zone').forEach(b=>{
-    b.addEventListener('click',e=>{
+
+  // Runs toggle
+  c.querySelectorAll('.ez-run-btn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
       e.stopPropagation();
-      const pi=parseInt(b.dataset.planidx),fromZone=parseInt(b.dataset.fromzone);
-      if(!S.clusterResult)return;
-      const nZones=S.clusterResult.clusters.length;
-      const action=prompt('Link: '+S.plan[pi].linkId+'\n1) Reorder within Zone '+(fromZone+1)+'\n2) Move to different zone\nType 1 or 2:','');
-      if(!action)return;
-      if(action.trim()==='1'){
-        const zoneMembers=S.clusterResult.clusters[fromZone];
-        const posInZone=zoneMembers.indexOf(pi)+1;
-        const toStr=prompt('Current position: '+posInZone+' of '+zoneMembers.length+'\nMove to position (1–'+zoneMembers.length+'):','');
-        if(!toStr)return;const to=parseInt(toStr)-1;
-        if(isNaN(to)||to<0||to>=zoneMembers.length){toast('Invalid position','error');return;}
-        const cur=zoneMembers.indexOf(pi);
-        zoneMembers.splice(cur,1);zoneMembers.splice(to,0,pi);
-        rebuildJourneyFromZones();renderLinksList();updateDistSummary();updatePlannerMap();
-        toast(S.plan[pi].linkId+' moved to position '+(to+1)+' in Zone '+(fromZone+1),'success');
-      } else if(action.trim()==='2'){
-        const zoneNames=S.clusterResult.clusters.map((_,i)=>'Zone '+(i+1)).join(', ');
-        const ans=prompt('Move to which zone? ('+zoneNames+')\nEnter zone number:','');
-        if(!ans)return;const toZone=parseInt(ans)-1;
-        if(isNaN(toZone)||toZone<0||toZone>=nZones){toast('Invalid zone','error');return;}
-        if(toZone===fromZone){toast('Already in Zone '+(fromZone+1),'info');return;}
-        const src=S.clusterResult.clusters[fromZone],dst=S.clusterResult.clusters[toZone];
-        const pos=src.indexOf(pi);if(pos>=0){src.splice(pos,1);dst.push(pi);}
-        rebuildJourneyFromZones();renderLinksList();updateDistSummary();updatePlannerMap();
-        toast(S.plan[pi].linkId+' moved to Zone '+(toZone+1),'success');
+      const pi = parseInt(btn.dataset.pi);
+      S.plan[pi].skipRun2 = !S.plan[pi].skipRun2;
+      savePlanCache();
+      renderLinksList();
+      updateDistSummary();
+      renderPlanExport();
+    });
+  });
+
+  // Zone input change — store on the plan object immediately
+  c.querySelectorAll('.ez-zone-input').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const pi = parseInt(inp.dataset.pi);
+      const v  = parseInt(inp.value);
+      if(!isNaN(v)) S.plan[pi].zone = v;
+    });
+  });
+
+  // Seq input change
+  c.querySelectorAll('.ez-seq-input').forEach(inp=>{
+    inp.addEventListener('change', ()=>{
+      const pi = parseInt(inp.dataset.pi);
+      const v  = parseInt(inp.value);
+      if(!isNaN(v)) S.plan[pi].seq = v;
+    });
+  });
+
+  // Move whole zone to position
+  c.querySelectorAll('.ez-move-btn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      e.stopPropagation();
+      const fromZone = parseInt(btn.dataset.zone);
+      const inp = c.querySelector('.ez-move-input[data-zone="'+fromZone+'"]');
+      const toPos = parseInt(inp&&inp.value);
+      if(isNaN(toPos)||toPos<1){toast('Enter a valid position (1 or higher)','error');return;}
+      moveZoneToPosition(fromZone, toPos);
+    });
+  });
+
+  // Allow Enter key in move input
+  c.querySelectorAll('.ez-move-input').forEach(inp=>{
+    inp.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){
+        const btn = c.querySelector('.ez-move-btn[data-zone="'+inp.dataset.zone+'"]');
+        if(btn) btn.click();
       }
     });
   });
+
+  // Always refresh Share Plan
+  renderPlanExport();
 }
 
-function rebuildJourneyFromZones(){
-  if(!S.clusterResult)return;
-  // Remove empty clusters and renumber
-  S.clusterResult.clusters = S.clusterResult.clusters.filter(m=>m&&m.length>0);
-  S.clusterResult.numClusters = S.clusterResult.clusters.length;
-  S.journeySteps=[];
-  S.clusterResult.clusters.forEach((members,cId)=>{
+function moveZoneToPosition(fromZoneNum, toPos){
+  // Get current sorted zone order
+  const zoneSet = new Set(S.plan.map(l=>l.zone!=null?l.zone:1));
+  const sorted  = [...zoneSet].sort((a,b)=>a-b);
+  const fromIdx = sorted.indexOf(fromZoneNum);
+  if(fromIdx < 0){ toast('Zone '+fromZoneNum+' not found','error'); return; }
+
+  // Remove from current position, insert at toPos-1
+  sorted.splice(fromIdx, 1);
+  sorted.splice(Math.min(toPos-1, sorted.length), 0, fromZoneNum);
+
+  // Remap zone numbers: sorted[i] gets new zone number (i+1) * 10
+  // Use temporary large numbers to avoid collisions
+  const remap = {};
+  sorted.forEach((oldZ, ni)=>{ remap[oldZ] = (ni+1)*10; });
+
+  S.plan.forEach(link=>{
+    const z = link.zone!=null?link.zone:1;
+    link.zone = remap[z] || z;
+  });
+
+  // Normalize to 1,2,3...
+  const newSorted = [...new Set(S.plan.map(l=>l.zone))].sort((a,b)=>a-b);
+  const normMap   = {};
+  newSorted.forEach((z,i)=>{ normMap[z]=i+1; });
+  S.plan.forEach(link=>{ link.zone=normMap[link.zone]; });
+
+  applyZoneSort();
+  toast('Zone '+fromZoneNum+' moved to position '+toPos,'success');
+}
+
+function applyZoneSort(){
+  // Sort S.plan by zone → seq, auto-renumber seq within each zone
+  S.plan.sort((a,b)=>{
+    const za = a.zone!=null?a.zone:1, zb = b.zone!=null?b.zone:1;
+    if(za!==zb) return za-zb;
+    return (a.seq||0)-(b.seq||0);
+  });
+
+  // Auto-renumber seq within each zone
+  let lastZone = null, seqCounter = 0;
+  S.plan.forEach(link=>{
+    const z = link.zone!=null?link.zone:1;
+    if(z!==lastZone){ lastZone=z; seqCounter=1; }
+    else seqCounter++;
+    link.seq = seqCounter;
+  });
+  S.plan.forEach((l,i)=>l.sequence=i+1);
+
+  // Rebuild cluster result from zone assignments
+  rebuildClustersFromZones();
+  savePlanCache();
+  renderLinksList();
+  updatePlannerMap();
+  updateDistSummary();
+  renderPlanExport();
+  toast('Plan sorted — '+[...new Set(S.plan.map(l=>l.zone))].length+' zone(s)','success');
+}
+
+function rebuildClustersFromZones(){
+  // Build S.clusterResult.clusters from S.plan zone assignments
+  const zoneMap = new Map();
+  S.plan.forEach((link, pi)=>{
+    const z = link.zone!=null?link.zone:1;
+    if(!zoneMap.has(z)) zoneMap.set(z,[]);
+    zoneMap.get(z).push(pi);
+  });
+  const sortedZones = [...zoneMap.keys()].sort((a,b)=>a-b);
+  const clusters = sortedZones.map(z=>zoneMap.get(z));
+  if(S.clusterResult){
+    S.clusterResult.clusters = clusters;
+    S.clusterResult.numClusters = clusters.length;
+  } else if(clusters.length > 1){
+    S.clusterResult = {clusters, numClusters:clusters.length, totalKm:0};
+  }
+  // Rebuild journey steps
+  S.journeySteps = [];
+  clusters.forEach((members, cId)=>{
     for(let run=1;run<=S.totalRuns;run++){
       members.forEach(pi=>{
         if(pi<0||pi>=S.plan.length)return;
@@ -1117,26 +1204,28 @@ function rebuildJourneyFromZones(){
   });
 }
 
+function rebuildJourneyFromZones(){
+  rebuildClustersFromZones();
+}
+
 function onListLinkClick(planIdx){
-  const link=S.plan[planIdx];if(!link)return;
-  const f=S.stops[link.fromStop],t=S.stops[link.toStop];
-  if(!f||!f.lat)return;
-  // Store selected link for highlighting
   S.selectedLinkIdx = planIdx;
-  // Switch to map sub-tab
-  switchPlannerTab('map');
-  // After map is visible, fit bounds and update markers
-  setTimeout(()=>{
-    if(!S.plannerMap){initPlannerMap();}
-    updatePlannerMap();
-    const bounds=t&&t.lat?[[f.lat,f.lng],[t.lat,t.lng]]:[[f.lat,f.lng]];
-    S.plannerMap.fitBounds(bounds,{padding:[60,60],maxZoom:17});
-  },150);
+  updatePlannerMap();
+  const mapEl = document.getElementById('planner-map');
+  if(mapEl) mapEl.scrollIntoView({behavior:'smooth', block:'center'});
 }
 function resetPlanOrder(){
-  if(S.originalPlanOrder){S.plan=S.originalPlanOrder.map(i=>S.plan[i]||S.plan[0]);S.originalPlanOrder=null;}
-  S.clusterResult=null; S.journeySteps=[];
-  renderPlannerUI();
+  if(!S.originalPlanOrder){toast('No original order saved','error');return;}
+  S.plan=S.originalPlanOrder.map(l=>Object.assign({},l));
+  S.plan.forEach((l,i)=>{l.sequence=i+1;l.zone=1;l.seq=i+1;});
+  S.originalPlanOrder=null; S.journeySteps=[]; S.clusterResult=null;
+  S.selectedLinkIdx=null;
+  const badge=document.getElementById('opt-status-badge');
+  if(badge){badge.textContent='Not run';badge.className='badge';}
+  const optRes=document.getElementById('opt-result');
+  if(optRes) optRes.classList.add('hidden');
+  updateDistSummary();renderLinksList();updatePlannerMap();renderPlanExport();
+  toast('Reset to original order');
 }
 
 function runOptimiser(){
@@ -1174,6 +1263,14 @@ function runOptimiser(){
         );
       }
       S.plan.forEach((l,i)=>l.sequence=i+1);
+      // Populate zone and seq fields from cluster result
+      if(S.clusterResult&&S.clusterResult.clusters){
+        S.clusterResult.clusters.forEach((members,ci)=>{
+          members.forEach((pi,li)=>{
+            if(S.plan[pi]){ S.plan[pi].zone=ci+1; S.plan[pi].seq=li+1; }
+          });
+        });
+      }
       const badge=document.getElementById('opt-status-badge');
       badge.textContent=r.numClusters+' zones ✓';badge.className='badge opt-status-done';
       showOptResult(r);
@@ -1471,7 +1568,7 @@ async function loadSharedPlan(){
         if(!S.stops[to])   S.stops[to]  ={code:to,  name:ti.name,lat:ti.lat,lng:ti.lng,isNew:!bsMap[to]};
         const service=lnkMap[linkId]||'';
         const pi=S.plan.length;
-        S.plan.push({linkId,fromStop:from,toStop:to,service,skipRun2:lk.runs===1,sequence:pi+1});
+        S.plan.push({linkId,fromStop:from,toStop:to,service,skipRun2:lk.runs===1,sequence:pi+1,zone:zi+1,seq:clusterIdx.length});
         clusterIdx.push(pi);
       });
       clusterArray.push(clusterIdx);
@@ -2225,7 +2322,7 @@ function taskLoadPlan(){
       lat:p?p.lat:(existF.lat||0), lng:p?p.lng:(existF.lng||0), isNew:r.isNewFrom||false};
     S.stops[r.to]  ={code:r.to,   name:r.toName  ||existT.name||('NEW - '+r.to),
       lat:q?q.lat:(existT.lat||0), lng:q?q.lng:(existT.lng||0), isNew:r.isNewTo  ||false};
-    S.plan.push({linkId:r.from+'-'+r.to,service:r.service||'—',sequence:i+1,fromStop:r.from,toStop:r.to,skipRun2:(r.runs||2)===1});
+    S.plan.push({linkId:r.from+'-'+r.to,service:r.service||'—',sequence:i+1,fromStop:r.from,toStop:r.to,skipRun2:(r.runs||2)===1,zone:1,seq:i+1});
   });
   S.totalRuns=valid.some(r=>(r.runs||2)===2)?2:1;
   savePlanCache(); renderPlannerUI(); switchScreen('planner');
@@ -2551,39 +2648,6 @@ function setZoneMapOverride(key, url){
    PLANNER SUB-TABS
    ══════════════════════════════════════════════════════════════ */
 
-let _plannerSubTab = 'plan'; // 'plan' or 'map'
-
-function switchPlannerTab(tab){
-  _plannerSubTab = tab;
-  const planView = document.getElementById('planner-plan-view');
-  const mapView  = document.getElementById('planner-map-view');
-  const planBtn  = document.getElementById('psub-plan-btn');
-  const mapBtn   = document.getElementById('psub-map-btn');
-  if(!planView||!mapView) return;
-  if(tab==='plan'){
-    planView.style.display='';
-    mapView.style.display='none';
-    if(planBtn){ planBtn.classList.add('active'); }
-    if(mapBtn)  { mapBtn.classList.remove('active'); }
-  } else {
-    planView.style.display='none';
-    mapView.style.display='';
-    if(planBtn){ planBtn.classList.remove('active'); }
-    if(mapBtn)  { mapBtn.classList.add('active'); }
-    // Leaflet needs resize after display:none→block
-    setTimeout(()=>{ if(S.plannerMap) S.plannerMap.invalidateSize(); },100);
-  }
-}
-
-let _plannerSubTabInited = false;
-function initPlannerSubTabs(){
-  if(_plannerSubTabInited) return;
-  _plannerSubTabInited = true;
-  const planBtn = document.getElementById('psub-plan-btn');
-  const mapBtn  = document.getElementById('psub-map-btn');
-  if(planBtn) planBtn.addEventListener('click',()=>switchPlannerTab('plan'));
-  if(mapBtn)  mapBtn.addEventListener('click', ()=>switchPlannerTab('map'));
-}
 
 
 /* ══ COPY/SHARE ALL GMAPS LINKS ═════════════════════════════════ */

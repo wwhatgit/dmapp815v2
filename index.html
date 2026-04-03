@@ -314,10 +314,10 @@
 
 <!-- ══ SCREEN: PLANNER ══ -->
 <section id="screen-planner" class="screen hidden app-hidden">
+  <div class="screen-content">
 
-  <!-- Top cards — scroll normally, start collapsed -->
-  <div id="planner-top-cards">
-    <div class="card" id="card-load">
+    <!-- Plan summary card — collapsed by default -->
+    <div class="card">
       <div class="card-hdr card-toggle" data-target="load-body">
         <div class="card-hdr-left">
           <span class="chevron" id="arrow-load-body">▼</span>
@@ -332,7 +332,6 @@
       </div>
       <div class="collapsible" id="load-body">
         <div class="card-body">
-          <div id="load-status" class="status-msg hidden"></div>
           <div id="plan-summary-block" style="display:none">
             <div class="stats-row">
               <div class="stat-box"><div class="stat-val" id="stat-links">0</div><div class="stat-lbl">Links</div></div>
@@ -340,7 +339,7 @@
               <div class="stat-box"><div class="stat-val" id="stat-runs">2</div><div class="stat-lbl">Runs</div></div>
               <div class="stat-box"><div class="stat-val blue" id="stat-est-dist">—</div><div class="stat-lbl">Est. km</div></div>
             </div>
-            <div class="dist-row" id="dist-row">
+            <div class="dist-row">
               <div class="dr-item"><span class="dr-val" id="dm-link-dist">—</span><span class="dr-lbl">Link km</span></div>
               <span class="dr-sep">+</span>
               <div class="dr-item"><span class="dr-val orange" id="dm-dead-dist">—</span><span class="dr-lbl">Dead-mile</span></div>
@@ -357,6 +356,7 @@
       </div>
     </div>
 
+    <!-- Route Optimiser — collapsed by default -->
     <div class="card" id="optimise-card" style="display:none">
       <div class="card-hdr card-toggle" data-target="optimise-body">
         <div class="card-hdr-left">
@@ -375,7 +375,10 @@
             </div>
           </div>
           <div class="threshold-row">
-            <div class="threshold-label"><span>Zone gap limit</span><span class="threshold-val" id="threshold-display">Auto</span></div>
+            <div class="threshold-label">
+              <span>Zone gap limit</span>
+              <span class="threshold-val" id="threshold-display">Auto</span>
+            </div>
             <div class="threshold-slider-wrap">
               <span class="thr-tick">Auto</span>
               <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="5" step="0.1" value="0"/>
@@ -387,30 +390,44 @@
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Sticky sub-tab bar -->
-  <div id="planner-subtab-bar" style="display:none">
-    <button class="psub-btn active" id="psub-plan-btn">📋 Plan</button>
-    <button class="psub-btn" id="psub-map-btn">🗺 Map</button>
-  </div>
+    <!-- Route Map — starts open -->
+    <div class="card" id="planner-map-card" style="display:none">
+      <div class="card-hdr card-toggle" data-target="map-body">
+        <div class="card-hdr-left">
+          <span class="chevron open" id="arrow-map-body">▼</span>
+          <span class="card-title">Route Map</span>
+        </div>
+        <div class="map-legend">
+          <span class="leg"><span class="leg-dot green-dot"></span>From</span>
+          <span class="leg"><span class="leg-dot red-dot"></span>To</span>
+          <span class="leg"><span class="leg-line blue-line"></span>Link</span>
+          <span class="leg"><span class="leg-line orange-line"></span>Dead</span>
+          <span class="leg"><span class="leg-line yellow-line"></span>Selected</span>
+        </div>
+      </div>
+      <div class="collapsible open" id="map-body">
+        <div id="planner-map" class="map-box map-tall"></div>
+      </div>
+    </div>
 
-  <!-- Plan sub-tab -->
-  <div id="planner-plan-view" style="display:none">
-    <div class="card" id="plan-links-card">
+    <!-- Links to Measure — editable zone grid -->
+    <div class="card" id="plan-links-card" style="display:none">
       <div class="card-hdr">
         <div class="card-hdr-left">
           <span class="card-title">Links to Measure</span>
+          <span class="badge" id="links-zone-badge"></span>
         </div>
-        <div class="list-actions">
-          <span class="hint-txt">Tap # to move</span>
+        <div class="links-actions">
+          <button class="btn btn-primary btn-sm" id="apply-zones-btn">✓ Apply</button>
           <button class="btn btn-ghost btn-sm" id="reset-order-btn">↺ Reset</button>
         </div>
       </div>
       <div id="plan-links-list" class="links-list"></div>
     </div>
 
-    <div class="card" id="plan-export-card">
+    <!-- Share Plan — collapsed by default -->
+    <div class="card" id="plan-export-card" style="display:none">
       <div class="card-hdr card-toggle" data-target="export-body">
         <div class="card-hdr-left">
           <span class="chevron" id="arrow-export-body">▼</span>
@@ -436,23 +453,12 @@
       </div>
     </div>
 
-    <div id="start-job-section" style="padding:0 0 16px">
+    <!-- START JOB -->
+    <div id="start-job-section" style="display:none;padding:4px 0 16px">
       <button class="btn btn-start-job full-width" id="start-job-btn">▶ START JOB</button>
     </div>
-  </div>
 
-  <!-- Map sub-tab -->
-  <div id="planner-map-view" style="display:none">
-    <div class="planner-map-legend">
-      <span class="leg"><span class="leg-dot green-dot"></span>From</span>
-      <span class="leg"><span class="leg-dot red-dot"></span>To</span>
-      <span class="leg"><span class="leg-line blue-line"></span>Link</span>
-      <span class="leg"><span class="leg-line orange-line"></span>Dead</span>
-      <span class="leg"><span class="leg-line yellow-line"></span>Selected</span>
-    </div>
-    <div id="planner-map" class="planner-map-full"></div>
   </div>
-
 </section>
 
 <!-- ══ SCREEN: DRIVE (Recording Console) ══ -->
