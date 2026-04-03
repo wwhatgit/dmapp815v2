@@ -314,11 +314,13 @@
 
 <!-- ══ SCREEN: PLANNER ══ -->
 <section id="screen-planner" class="screen hidden app-hidden">
-  <div class="screen-content">
+
+  <!-- Top cards — scroll normally, start collapsed -->
+  <div id="planner-top-cards">
     <div class="card" id="card-load">
       <div class="card-hdr card-toggle" data-target="load-body">
         <div class="card-hdr-left">
-          <span class="chevron open" id="arrow-load-body">▼</span>
+          <span class="chevron" id="arrow-load-body">▼</span>
           <span class="card-title">Plan</span>
           <span class="badge" id="plan-status-badge">Not Loaded</span>
         </div>
@@ -328,7 +330,7 @@
           <span class="inline-stat blue" id="inline-dist">—</span>
         </div>
       </div>
-      <div class="collapsible open" id="load-body">
+      <div class="collapsible" id="load-body">
         <div class="card-body">
           <div id="load-status" class="status-msg hidden"></div>
           <div id="plan-summary-block" style="display:none">
@@ -358,12 +360,12 @@
     <div class="card" id="optimise-card" style="display:none">
       <div class="card-hdr card-toggle" data-target="optimise-body">
         <div class="card-hdr-left">
-          <span class="chevron open" id="arrow-optimise-body">▼</span>
+          <span class="chevron" id="arrow-optimise-body">▼</span>
           <span class="card-title">Route Optimiser</span>
           <span class="badge" id="opt-status-badge">Not run</span>
         </div>
       </div>
-      <div class="collapsible open" id="optimise-body">
+      <div class="collapsible" id="optimise-body">
         <div class="card-body">
           <div class="opt-start-row">
             <span class="field-label">Start from</span>
@@ -385,66 +387,72 @@
         </div>
       </div>
     </div>
+  </div>
 
-    <div class="card" id="planner-map-card" style="display:none">
-      <div class="card-hdr card-toggle" data-target="map-body">
-        <div class="card-hdr-left">
-          <span class="chevron open" id="arrow-map-body">▼</span>
-          <span class="card-title">Route Map</span>
-        </div>
-        <div class="map-legend">
-          <span class="leg"><span class="leg-dot green-dot"></span>From</span>
-          <span class="leg"><span class="leg-dot red-dot"></span>To</span>
-          <span class="leg"><span class="leg-line blue-line"></span>Link</span>
-          <span class="leg"><span class="leg-line orange-line"></span>Dead</span>
-        </div>
-      </div>
-      <div class="collapsible open" id="map-body">
-        <div id="planner-map" class="map-box map-tall"></div>
-      </div>
-    </div>
+  <!-- Sticky sub-tab bar -->
+  <div id="planner-subtab-bar" style="display:none">
+    <button class="psub-btn active" id="psub-plan-btn">📋 Plan</button>
+    <button class="psub-btn" id="psub-map-btn">🗺 Map</button>
+  </div>
 
-    <div class="card" id="plan-links-card" style="display:none">
-      <div class="card-hdr card-toggle" data-target="links-body">
+  <!-- Plan sub-tab -->
+  <div id="planner-plan-view" style="display:none">
+    <div class="card" id="plan-links-card">
+      <div class="card-hdr">
         <div class="card-hdr-left">
-          <span class="chevron open" id="arrow-links-body">▼</span>
           <span class="card-title">Links to Measure</span>
         </div>
-        <div class="list-actions" onclick="event.stopPropagation()">
+        <div class="list-actions">
           <span class="hint-txt">Tap # to move</span>
           <button class="btn btn-ghost btn-sm" id="reset-order-btn">↺ Reset</button>
         </div>
       </div>
-      <div class="collapsible open" id="links-body">
-        <div id="plan-links-list" class="links-list"></div>
-      </div>
+      <div id="plan-links-list" class="links-list"></div>
     </div>
 
-    <!-- Plan Export card -->
-    <div class="card" id="plan-export-card" style="display:none">
+    <div class="card" id="plan-export-card">
       <div class="card-hdr card-toggle" data-target="export-body">
         <div class="card-hdr-left">
-          <span class="chevron open" id="arrow-export-body">▼</span>
+          <span class="chevron" id="arrow-export-body">▼</span>
           <span class="card-title">Share Plan</span>
         </div>
       </div>
-      <div class="collapsible open" id="export-body">
+      <div class="collapsible" id="export-body">
         <div class="card-body">
-          <p class="hint">Share this plan with drivers via WhatsApp. They paste it in Task tab → Load Plan.</p>
+          <p class="hint" style="margin-bottom:8px">Copy compact text to share via WhatsApp. Drivers paste it in Task tab.</p>
           <div id="plan-compact-text" class="plan-text-box"></div>
           <div class="btn-row" style="margin-top:8px">
             <button class="btn btn-primary flex1" id="copy-compact-btn">📋 Copy</button>
             <button class="btn btn-ghost flex1" id="download-detailed-btn">⬇ Download .txt</button>
           </div>
-          <div id="plan-export-status" class="status-msg hidden"></div>
+          <div class="share-plan-divider">🗺 Google Maps Zone Links</div>
+          <p class="hint" style="margin-bottom:6px">Pre-planned links using stop coordinates. Tap ✏ to paste a corrected link.</p>
+          <div id="plan-gmaps-links"></div>
+          <div class="btn-row" style="margin-top:10px">
+            <button class="btn btn-ghost flex1" id="copy-all-gmaps-btn">📋 Copy All Links</button>
+            <button class="btn btn-export-wa flex1" id="share-plan-wa-btn">💬 WhatsApp</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <div id="start-job-section" style="display:none">
+    <div id="start-job-section" style="padding:0 0 16px">
       <button class="btn btn-start-job full-width" id="start-job-btn">▶ START JOB</button>
     </div>
   </div>
+
+  <!-- Map sub-tab -->
+  <div id="planner-map-view" style="display:none">
+    <div class="planner-map-legend">
+      <span class="leg"><span class="leg-dot green-dot"></span>From</span>
+      <span class="leg"><span class="leg-dot red-dot"></span>To</span>
+      <span class="leg"><span class="leg-line blue-line"></span>Link</span>
+      <span class="leg"><span class="leg-line orange-line"></span>Dead</span>
+      <span class="leg"><span class="leg-line yellow-line"></span>Selected</span>
+    </div>
+    <div id="planner-map" class="planner-map-full"></div>
+  </div>
+
 </section>
 
 <!-- ══ SCREEN: DRIVE (Recording Console) ══ -->

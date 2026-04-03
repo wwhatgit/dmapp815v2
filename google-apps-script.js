@@ -290,8 +290,8 @@ function actionAddNewLink(ss, p) {
   // Append: Link, FromStopCode, ToStopCode, Service, Source
   tab.appendRow([
     linkId,
-    String(p.FromStopCode || '').trim(),
-    String(p.ToStopCode   || '').trim(),
+    String(p.FromStopCode || p.FromStop || '').trim(),
+    String(p.ToStopCode   || p.ToStop   || '').trim(),
     String(p.Service      || ''),
     String(p.Source       || 'DRIVER')
   ]);
