@@ -882,40 +882,191 @@ function updatePlannerMap(){
 }
 
 function renderLinksList(){
-  const list = document.getElementById('plan-links-list');
-  if(!list) return;
-  const clusters = S.clusterResult ? S.clusterResult.clusters : [S.plan.map((_,i)=>i)];
-  let html='';
-  clusters.forEach((cluster,ci)=>{
-    const col=CL_COLS[ci%CL_COLS.length];
-    html+=`<div class="zone-header" style="border-left:3px solid ${col}">Zone ${ci+1} <span class="zone-count">${cluster.length} links</span></div>`;
-    cluster.forEach((pi,li)=>{
-      const link=S.plan[pi];
-      const f=S.stops[link.fromStop]||{}, t=S.stops[link.toStop]||{};
-      const runs = link.skipRun2?'×1':'×2';
-      html+=`<div class="link-row" data-pi="${pi}">
-        <span class="link-seq" data-pi="${pi}" data-ci="${ci}" data-li="${li}">${li+1}</span>
-        <div class="link-info">
-          <div class="link-codes"><span class="lc-from">${link.fromStop}</span>→<span class="lc-to">${link.toStop}</span></div>
-          <div class="link-names">${escHtml(f.name||'')} → ${escHtml(t.name||'')}</div>
-          <div class="link-meta">${link.service||'—'} · ${runs}</div>
-        </div>
-        <button class="skip-run2-btn ${link.skipRun2?'active':''}" data-pi="${pi}">${runs}</button>
-      </div>`;
+  const c=document.getElementById('plan-links-list');
+  if(!c) return;
+  c.innerHTML='';
+  if(S.journeySteps&&S.journeySteps.length) renderZoneList(c);
+  else renderPlainList(c);
+  // Always update Share Plan after any re-render
+  renderPlanExport();
+}
+
+function renderPlainList(c){
+  S.plan.forEach((link,i)=>{
+    const f=S.stops[link.fromStop],t=S.stops[link.toStop];
+    const ok=!!(f&&f.lat&&t&&t.lat);
+    let dead='';
+    if(i<S.plan.length-1&&ok){
+      const nf=S.stops[S.plan[i+1].fromStop];
+      if(nf&&nf.lat){const d=optHaversine(t.lat,t.lng,nf.lat,nf.lng);dead=d<20?'<span class="chain-badge">⛓</span>':'<span class="deadmile-badge">↝'+(d/1000).toFixed(2)+'km</span>';}
+    }
+    const skip2=S.totalRuns===2?'<span class="skip2-badge'+(link.skipRun2?' skip2-active':'')+'" data-idx="'+i+'">'+(link.skipRun2?'1× run':'2× runs')+'</span>':'';
+    const div=document.createElement('div');
+    div.className='link-item'+(ok?'':' no-coords');
+    div.dataset.idx=i;div.dataset.planidx=i;div.dataset.linkid=link.linkId;
+    div.innerHTML='<div class="seq-badge" data-idx="'+i+'">'+(i+1)+'</div>'
+      +'<div class="li-id">'+link.linkId+'</div>'
+      +'<div class="li-info"><div class="li-stops">'+link.fromStop+' → '+link.toStop+'</div>'
+      +'<div class="li-svc">'+(f?f.name:link.fromStop)+' → '+(t?t.name:link.toStop)+(link.service&&link.service!=='—'?' | '+link.service:'')+'</div>'
+      +'<div class="li-badges">'+dead+skip2+'</div></div>'
+      +'<button class="li-remove" data-idx="'+i+'" title="Remove from plan">✕</button>';
+    div.addEventListener('click',e=>{if(!e.target.closest('.skip2-badge,.seq-badge,.li-remove'))onListLinkClick(i);});
+    c.appendChild(div);
+  });
+  c.querySelectorAll('.seq-badge').forEach(b=>{
+    b.addEventListener('click',e=>{
+      e.stopPropagation();
+      const from=parseInt(b.dataset.idx);
+      const toStr=prompt('Move "'+S.plan[from].linkId+'" to position (1–'+S.plan.length+'):','');
+      if(!toStr)return;const to=parseInt(toStr)-1;
+      if(isNaN(to)||to<0||to>=S.plan.length){toast('Invalid position','error');return;}
+      const m=S.plan.splice(from,1)[0];S.plan.splice(to,0,m);
+      S.plan.forEach((l,i)=>l.sequence=i+1);
+      renderLinksList();updatePlannerMap();updateDistSummary();
+      toast(m.linkId+' moved to #'+(to+1));
     });
   });
-  list.innerHTML = html;
-  list.querySelectorAll('.skip-run2-btn').forEach(btn=>{
-    btn.addEventListener('click',e=>{
+  c.querySelectorAll('.skip2-badge').forEach(b=>{
+    b.addEventListener('click',e=>{e.stopPropagation();const i=parseInt(b.dataset.idx);S.plan[i].skipRun2=!S.plan[i].skipRun2;renderLinksList();updateDistSummary();});
+  });
+  c.querySelectorAll('.li-remove').forEach(b=>{
+    b.addEventListener('click',e=>{
       e.stopPropagation();
-      const pi=parseInt(btn.dataset.pi);
-      S.plan[pi].skipRun2=!S.plan[pi].skipRun2;
-      savePlanCache();
-      renderLinksList(); updateDistSummary(); renderPlanExport();
+      const i=parseInt(b.dataset.idx);
+      const lid=S.plan[i].linkId;
+      if(!confirm('Remove "'+lid+'" from plan?'))return;
+      S.plan.splice(i,1);
+      S.plan.forEach((l,j)=>l.sequence=j+1);
+      S.journeySteps=[];S.clusterResult=null;
+      renderLinksList();updatePlannerMap();updateDistSummary();
+      toast(lid+' removed','info');
     });
   });
 }
 
+function renderZoneList(c){
+  if(!c._zc)c._zc={};
+  const zoneMap=new Map();
+  S.journeySteps.forEach(step=>{
+    if(!zoneMap.has(step.clusterId))zoneMap.set(step.clusterId,{clusterId:step.clusterId,clusterSeq:step.clusterSeq,links:[],run2:[]});
+    const z=zoneMap.get(step.clusterId);
+    if(step.run===1&&!z.links.includes(step.planIdx))z.links.push(step.planIdx);
+    if(step.run===2&&!z.run2.includes(step.planIdx))z.run2.push(step.planIdx);
+  });
+  let gseq=0;
+  const zones=[...zoneMap.values()].sort((a,b)=>a.clusterSeq-b.clusterSeq);
+  zones.forEach(zone=>{
+    const ci=zone.clusterId%CL_COLS.length;
+    const isCollapsed=c._zc[zone.clusterId]===true;
+    const skipCount=zone.links.filter(pi=>S.plan[pi]&&S.plan[pi].skipRun2).length;
+    const hdr=document.createElement('div');
+    hdr.className='zone-hdr ch-'+ci;hdr.dataset.zoneid=zone.clusterId;
+    hdr.innerHTML='<div class="zone-hdr-left">'
+      +'<span class="zone-ca '+(isCollapsed?'':'open')+'">'+(isCollapsed?'▶':'▼')+'</span>'
+      +'<span>Zone '+(zone.clusterSeq+1)+'</span>'
+      +'<span class="zone-meta">'+zone.links.length+' link'+(zone.links.length!==1?'s':'')+(S.totalRuns===2?' · R1+R2'+(skipCount?' ('+skipCount+' ×1)':''):'')+'</span>'
+      +'</div><span class="zone-km" id="zkm-'+zone.clusterId+'">—</span>';
+    hdr.addEventListener('click',()=>{c._zc[zone.clusterId]=!c._zc[zone.clusterId];renderLinksList();});
+    c.appendChild(hdr);
+    if(!isCollapsed){
+      zone.links.forEach(planIdx=>{
+        gseq++;
+        const link=S.plan[planIdx];if(!link)return;
+        const f=S.stops[link.fromStop],t=S.stops[link.toStop];
+        const ok=!!(f&&f.lat&&t&&t.lat);
+        const isSkip=link.skipRun2;
+        let dead='';
+        if(ok){
+          const si=S.journeySteps.findIndex(s=>s.planIdx===planIdx&&s.run===1);
+          if(si>=0&&si<S.journeySteps.length-1){
+            const nxt=S.journeySteps[si+1],nf=S.stops[S.plan[nxt.planIdx]&&S.plan[nxt.planIdx].fromStop];
+            if(nf&&nf.lat){const d=optHaversine(t.lat,t.lng,nf.lat,nf.lng);if(d>20)dead='<span class="deadmile-badge">↝'+(d/1000).toFixed(2)+'km</span>';}
+          }
+        }
+        const runBadges=S.totalRuns===2?('<span class="run-badge-sm r1">R1</span>'+(isSkip?'<span class="run-badge-sm skip-r2">no R2</span>':'<span class="run-badge-sm r2">R2</span>')):'<span class="run-badge-sm r1">R1</span>';
+        const skipBtn=S.totalRuns===2?'<span class="skip2-badge'+(isSkip?' skip2-active':'')+'" data-planidx="'+planIdx+'">'+(isSkip?'1× run':'2× runs')+'</span>':'';
+        const div=document.createElement('div');
+        div.className='link-item cl-'+ci+(ok?'':' no-coords');
+        div.dataset.planidx=planIdx;div.dataset.linkid=link.linkId;div.dataset.zoneid=zone.clusterId;
+        div.innerHTML='<div class="seq-badge seq-zone" data-planidx="'+planIdx+'" data-zoneid="'+zone.clusterId+'" data-fromzone="'+zone.clusterId+'">'+gseq+'</div>'
+          +'<div class="li-id">'+link.linkId+'</div>'
+          +'<div class="li-info"><div class="li-stops">'+link.fromStop+' → '+link.toStop+'</div>'
+          +'<div class="li-svc">'+(f?f.name:link.fromStop)+' → '+(t?t.name:link.toStop)+(link.service&&link.service!=='—'?' | '+link.service:'')+'</div>'
+          +'<div class="li-badges">'+runBadges+dead+skipBtn+'</div></div>';
+        div.addEventListener('click',e=>{if(!e.target.closest('.skip2-badge,.seq-zone'))onListLinkClick(planIdx);});
+        c.appendChild(div);
+      });
+    }
+    setTimeout(()=>{
+      const el=document.getElementById('zkm-'+zone.clusterId);if(!el)return;
+      let km=0;zone.links.forEach(pi=>{const l=S.plan[pi],f=S.stops[l&&l.fromStop],t=S.stops[l&&l.toStop];if(f&&t&&f.lat&&t.lat)km+=optHaversine(f.lat,f.lng,t.lat,t.lng)/1000;});
+      el.textContent=km.toFixed(2)+' km';
+    },0);
+  });
+  c.querySelectorAll('.skip2-badge[data-planidx]').forEach(b=>{
+    b.addEventListener('click',e=>{
+      e.stopPropagation();
+      const pi=parseInt(b.dataset.planidx);
+      S.plan[pi].skipRun2=!S.plan[pi].skipRun2;
+      rebuildJourneyFromZones();renderLinksList();updateDistSummary();
+    });
+  });
+  c.querySelectorAll('.seq-zone').forEach(b=>{
+    b.addEventListener('click',e=>{
+      e.stopPropagation();
+      const pi=parseInt(b.dataset.planidx),fromZone=parseInt(b.dataset.fromzone);
+      if(!S.clusterResult)return;
+      const nZones=S.clusterResult.clusters.length;
+      const action=prompt('Link: '+S.plan[pi].linkId+'\n1) Reorder within Zone '+(fromZone+1)+'\n2) Move to different zone\nType 1 or 2:','');
+      if(!action)return;
+      if(action.trim()==='1'){
+        const zoneMembers=S.clusterResult.clusters[fromZone];
+        const posInZone=zoneMembers.indexOf(pi)+1;
+        const toStr=prompt('Current position: '+posInZone+' of '+zoneMembers.length+'\nMove to position (1–'+zoneMembers.length+'):','');
+        if(!toStr)return;const to=parseInt(toStr)-1;
+        if(isNaN(to)||to<0||to>=zoneMembers.length){toast('Invalid position','error');return;}
+        const cur=zoneMembers.indexOf(pi);
+        zoneMembers.splice(cur,1);zoneMembers.splice(to,0,pi);
+        rebuildJourneyFromZones();renderLinksList();updateDistSummary();updatePlannerMap();
+        toast(S.plan[pi].linkId+' moved to position '+(to+1)+' in Zone '+(fromZone+1),'success');
+      } else if(action.trim()==='2'){
+        const zoneNames=S.clusterResult.clusters.map((_,i)=>'Zone '+(i+1)).join(', ');
+        const ans=prompt('Move to which zone? ('+zoneNames+')\nEnter zone number:','');
+        if(!ans)return;const toZone=parseInt(ans)-1;
+        if(isNaN(toZone)||toZone<0||toZone>=nZones){toast('Invalid zone','error');return;}
+        if(toZone===fromZone){toast('Already in Zone '+(fromZone+1),'info');return;}
+        const src=S.clusterResult.clusters[fromZone],dst=S.clusterResult.clusters[toZone];
+        const pos=src.indexOf(pi);if(pos>=0){src.splice(pos,1);dst.push(pi);}
+        rebuildJourneyFromZones();renderLinksList();updateDistSummary();updatePlannerMap();
+        toast(S.plan[pi].linkId+' moved to Zone '+(toZone+1),'success');
+      }
+    });
+  });
+}
+
+function rebuildJourneyFromZones(){
+  if(!S.clusterResult)return;
+  S.journeySteps=[];
+  S.clusterResult.clusters.forEach((members,cId)=>{
+    if(!members||!members.length)return;
+    for(let run=1;run<=S.totalRuns;run++){
+      members.forEach(pi=>{
+        if(pi<0||pi>=S.plan.length)return;
+        if(run===2&&S.plan[pi]&&S.plan[pi].skipRun2)return;
+        S.journeySteps.push({planIdx:pi,run,clusterId:cId,clusterSeq:cId});
+      });
+    }
+  });
+}
+
+function onListLinkClick(planIdx){
+  // In v2 there is no drive map — just highlight the link on planner map if available
+  const link=S.plan[planIdx];if(!link)return;
+  const f=S.stops[link.fromStop],t=S.stops[link.toStop];
+  if(!f||!f.lat||!S.plannerMap)return;
+  const bounds=t&&t.lat?[[f.lat,f.lng],[t.lat,t.lng]]:[[f.lat,f.lng]];
+  S.plannerMap.fitBounds(bounds,{padding:[60,60],maxZoom:17});
+}
 function resetPlanOrder(){
   if(S.originalPlanOrder){S.plan=S.originalPlanOrder.map(i=>S.plan[i]||S.plan[0]);S.originalPlanOrder=null;}
   S.clusterResult=null; S.journeySteps=[];
@@ -937,7 +1088,8 @@ async function runOptimiser(){
     if(!S.originalPlanOrder) S.originalPlanOrder=S.plan.map((_,i)=>i);
     const result=optimiseRoute(S.plan,S.stops,oLat,oLng,2,S.speedKmh||SPEED_KMH,customKm);
     S.plan=result.order.map(i=>S.plan[i]); S.clusterResult=result;
-    S.journeySteps=[];
+    // Build journey steps so renderZoneList has data immediately
+    rebuildJourneyFromZones();
     document.getElementById('opt-status-badge').textContent='Optimised ✓';
     document.getElementById('opt-status-badge').className='badge loaded';
     const el=document.getElementById('opt-result');
