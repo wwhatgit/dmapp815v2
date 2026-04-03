@@ -719,13 +719,20 @@ function bindEvents(){
   });
 
   // Planner
-  document.getElementById('optimise-btn').addEventListener('click', runOptimiser);
-  document.getElementById('reset-order-btn').addEventListener('click', resetPlanOrder);
-  document.getElementById('start-job-btn').addEventListener('click', startJob);
-  document.getElementById('copy-compact-btn').addEventListener('click', copyCompactPlan);
-  document.getElementById('download-detailed-btn').addEventListener('click', downloadDetailedPlan);
-  document.getElementById('copy-all-gmaps-btn').addEventListener('click', copyAllGmapsLinks);
-  document.getElementById('share-plan-wa-btn').addEventListener('click', shareGmapsPlanWhatsApp);
+  // Planner buttons — use event delegation since elements may be hidden at init
+  document.getElementById('screen-planner').addEventListener('click', function(e){
+    const btn = e.target.closest('button,a');
+    if(!btn) return;
+    const id = btn.id;
+    if(id==='optimise-btn')         { e.stopPropagation(); runOptimiser(); }
+    else if(id==='reset-order-btn') { e.stopPropagation(); resetPlanOrder(); }
+    else if(id==='start-job-btn')   { e.stopPropagation(); startJob(); }
+    else if(id==='copy-compact-btn'){ e.stopPropagation(); copyCompactPlan(); }
+    else if(id==='download-detailed-btn'){ e.stopPropagation(); downloadDetailedPlan(); }
+    else if(id==='copy-all-gmaps-btn')   { e.stopPropagation(); copyAllGmapsLinks(); }
+    else if(id==='share-plan-wa-btn')    { e.stopPropagation(); shareGmapsPlanWhatsApp(); }
+  });
+  // Slider still needs direct binding
   const slider = document.getElementById('threshold-slider');
   if(slider) slider.addEventListener('input', ()=>{
     const v=parseFloat(slider.value);
@@ -810,7 +817,11 @@ function renderPlannerUI(){
   document.getElementById('stat-stops').textContent = ss.size;
   document.getElementById('stat-runs').textContent  = S.plan.some(p=>!p.skipRun2)?'2':'1';
 
-  // Show sub-tab bar and plan view
+  // Show optimise card (lives in top-cards, not in sub-tab views)
+  const optCard = document.getElementById('optimise-card');
+  if(optCard) optCard.style.display='';
+
+  // Show sub-tab bar and switch to current sub-tab
   const sb=document.getElementById('planner-subtab-bar');
   if(sb) sb.style.display='';
   switchPlannerTab(_plannerSubTab||'plan');
@@ -2564,7 +2575,10 @@ function switchPlannerTab(tab){
   }
 }
 
+let _plannerSubTabInited = false;
 function initPlannerSubTabs(){
+  if(_plannerSubTabInited) return;
+  _plannerSubTabInited = true;
   const planBtn = document.getElementById('psub-plan-btn');
   const mapBtn  = document.getElementById('psub-map-btn');
   if(planBtn) planBtn.addEventListener('click',()=>switchPlannerTab('plan'));
