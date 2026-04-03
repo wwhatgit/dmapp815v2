@@ -12,7 +12,7 @@ const OSRM_BASE        = 'https://router.project-osrm.org/route/v1/driving';
 const SPEED_KMH        = 50;
 const GNSS_GOOD        = 15;   // metres accuracy threshold
 const PROX_DIST        = 30;   // metres proximity alert threshold
-const APP_VERSION      = '2026.03.24.01';
+const APP_VERSION      = '2026.04.03.01';
 const PLAN_VERSION     = 'DMAPP v2';
 const MAX_GMAPS_WP     = 9;    // Google Maps max intermediate waypoints
 
@@ -420,33 +420,194 @@ function showFlagModal(stopCode,stopName,plannedLat,plannedLng,callback,cancelCa
 }
 
 /* ══ SPLASH ══════════════════════════════════════════════════════ */
-function runSplash(){
-  const canvas=document.getElementById('splash-canvas');
-  if(!canvas){endSplash();return;}
-  const ctx=canvas.getContext('2d');
-  let W=canvas.width=window.innerWidth, H=canvas.height=window.innerHeight;
-  // Simple particle burst
-  const particles=[];
-  for(let i=0;i<60;i++) particles.push({x:W/2,y:H/2,vx:(Math.random()-0.5)*6,vy:(Math.random()-0.5)*6,life:1,r:Math.random()*3+1});
-  let frame=0;
-  function draw(){
-    ctx.fillStyle='rgba(11,15,26,0.15)';ctx.fillRect(0,0,W,H);
-    particles.forEach(p=>{
-      p.x+=p.vx;p.y+=p.vy;p.life-=0.02;p.vy+=0.1;
-      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      ctx.fillStyle='rgba(255,40,0,'+p.life+')';ctx.fill();
+const SEG_ON={
+  '0':['a','b','c','d','e','f'],'1':['b','c'],'2':['a','b','d','e','g'],
+  '3':['a','b','c','d','g'],   '4':['b','c','f','g'],'5':['a','c','d','f','g'],
+  '6':['a','c','d','e','f','g'],'7':['a','b','c'],
+  '8':['a','b','c','d','e','f','g'],'9':['a','b','c','d','f','g']
+};
+const SEG_POS={
+  a:[0,10,80,9],b:[8,88,9,38],c:[54,88,9,38],d:[91,10,80,9],
+  e:[54,3,9,38],f:[8,3,9,38],g:[45,10,80,9]
+};
+function buildDigit(el){
+  Object.keys(SEG_POS).forEach(s=>{
+    const d=document.createElement('div');
+    d.className='seg seg-'+s;d.id=el.id+'-'+s;
+    const[t,l,w,h]=SEG_POS[s];
+    d.style.cssText='position:absolute;top:'+t+'%;left:'+l+'%;width:'+w+'%;height:'+h+'%;border-radius:2px;background:rgba(255,255,255,0.03);';
+    el.appendChild(d);
+  });
+}
+function setDigit(id,ch,intensity=1){
+  const on=SEG_ON[ch]||[];
+  const r=Math.round(255*intensity),g=Math.round(30*intensity),b=0;
+  const col=`rgb(${r},${g},${b})`;
+  const glow=intensity>0.5?`0 0 ${8*intensity}px ${col},0 0 ${22*intensity}px rgba(255,30,0,${0.5*intensity})`:'none';
+  Object.keys(SEG_POS).forEach(s=>{
+    const el=document.getElementById(id+'-'+s);
+    if(!el)return;
+    if(on.includes(s)){el.style.background=col;el.style.boxShadow=glow;}
+    else{el.style.background='rgba(255,255,255,0.03)';el.style.boxShadow='none';}
+  });
+}
+
+// ── EPIC SPLASH — EA Sports / Marvel style ──
+// Phase 1: Deep space — particles + red energy streaks
+// Phase 2: 815 hyper-flash — digits scramble at accelerating speed
+// Phase 3: Sequential lock — each digit slams into place with flash
+// Phase 4: Logo SLAM — DM slides in from left, app from right
+// Phase 5: Fade out
+
+function initSplashCanvas(){
+  const cv=document.getElementById('splash-canvas');
+  if(!cv)return()=>{};
+  cv.width=window.innerWidth;cv.height=window.innerHeight;
+  const ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
+
+  // Depth stars — 3 layers with parallax
+  const layers=[
+    Array.from({length:80},()=>({x:Math.random()*W,y:Math.random()*H,r:Math.random()*0.8+0.1,v:0.08,a:Math.random()*0.4+0.1})),
+    Array.from({length:40},()=>({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.2+0.3,v:0.18,a:Math.random()*0.5+0.2})),
+    Array.from({length:15},()=>({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.8+0.5,v:0.35,a:Math.random()*0.6+0.3})),
+  ];
+  // Energy streaks — converge toward centre
+  const cx=W/2,cy=H/2;
+  const streaks=Array.from({length:22},()=>{
+    const angle=Math.random()*Math.PI*2;
+    const dist=Math.random()*Math.max(W,H)*0.7+100;
+    return{x:cx+Math.cos(angle)*dist,y:cy+Math.sin(angle)*dist,
+      tx:cx,ty:cy,prog:Math.random(),
+      len:Math.random()*60+25,speed:Math.random()*0.004+0.002,
+      a:Math.random()*0.2+0.05};
+  });
+  // Shockwave ring (fires once at lock-in)
+  let ring={active:false,r:0,maxR:Math.max(W,H)*0.8,a:0.9};
+
+  let running=true,shockFired=false;
+  window._splashFireShock=()=>{ring.active=true;ring.r=0;ring.a=0.9;};
+
+  function frame(){
+    if(!running)return;
+    ctx.fillStyle='rgba(5,7,14,0.22)';
+    ctx.fillRect(0,0,W,H);
+
+    // Streaks toward centre
+    streaks.forEach(s=>{
+      s.prog+=s.speed;if(s.prog>1)s.prog=0;
+      const t=s.prog;
+      const sx=s.x+(s.tx-s.x)*t,sy=s.y+(s.ty-s.y)*t;
+      const ex=s.x+(s.tx-s.x)*(t+s.speed*25);const ey=s.y+(s.ty-s.y)*(t+s.speed*25);
+      const g=ctx.createLinearGradient(sx,sy,ex,ey);
+      g.addColorStop(0,'transparent');g.addColorStop(1,`rgba(255,35,0,${s.a})`);
+      ctx.beginPath();ctx.strokeStyle=g;ctx.lineWidth=1;
+      ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.stroke();
     });
-    frame++;
-    if(frame<80) requestAnimationFrame(draw);
+
+    // Parallax stars
+    layers.forEach((layer,li)=>{
+      layer.forEach(p=>{
+        p.y+=p.v;if(p.y>H){p.y=0;p.x=Math.random()*W;}
+        ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+        ctx.fillStyle=`rgba(${li===2?'255,180,100':'255,80,30'},${p.a})`;ctx.fill();
+      });
+    });
+
+    // Shockwave
+    if(ring.active){
+      ring.r+=ring.maxR*0.07;ring.a*=0.82;
+      ctx.beginPath();ctx.arc(cx,cy,ring.r,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(255,55,0,${ring.a})`;
+      ctx.lineWidth=ring.r*0.04;ctx.stroke();
+      if(ring.a<0.01)ring.active=false;
+    }
+    requestAnimationFrame(frame);
   }
-  draw();
+  ctx.fillStyle='rgb(5,7,14)';ctx.fillRect(0,0,W,H);
+  frame();
+  return()=>{running=false;};
+}
 
-  // Draw 8-1-5 digits
-  const digits=['8','1','5'];
-  const cells=[document.getElementById('sd-0'),document.getElementById('sd-1'),document.getElementById('sd-2')];
-  digits.forEach((d,i)=>setTimeout(()=>{if(cells[i])cells[i].textContent=d;},i*300+400));
+function runSplash(){
+  const cells=['sd-0','sd-1','sd-2'];
+  cells.forEach(id=>{
+    const el=document.getElementById(id);
+    if(el){el.style.cssText='position:relative;width:64px;height:108px;';buildDigit(el);}
+  });
+  const stopCanvas=initSplashCanvas();
+  const DIGITS='0123456789';
 
-  setTimeout(endSplash,1800);
+  // Phase 1: silence — let particles breathe (400ms)
+  // Phase 2: hyper-flash — 40 frames accelerating
+  const intervals=[80,75,70,65,60,55,50,46,42,38,35,32,29,26,24,22,20,18,16,15,
+                   14,13,12,11,10,9,8,8,7,7,6,6,5,5,4,4,4,4,3,3,3];
+  let fi=0;
+  function doFlash(){
+    cells.forEach(id=>setDigit(id,DIGITS[Math.floor(Math.random()*10)]));
+    fi++;
+    if(fi<intervals.length)setTimeout(doFlash,intervals[fi]||3);
+    else lockIn();
+  }
+  setTimeout(doFlash,400);
+
+  function lockIn(){
+    // Fire shockwave at lock-start
+    if(window._splashFireShock)window._splashFireShock();
+
+    let s=0;
+    function lock0(){
+      if(s<10){
+        setDigit('sd-0',DIGITS[Math.floor(Math.random()*10)]);
+        setDigit('sd-1',DIGITS[Math.floor(Math.random()*10)]);
+        setDigit('sd-2',DIGITS[Math.floor(Math.random()*10)]);
+        s++;setTimeout(lock0,38);
+      } else {
+        // SLAM 8 — white flash then settle
+        setDigit('sd-0','8',3.0);
+        setTimeout(()=>setDigit('sd-0','8',1.4),60);
+        setTimeout(()=>setDigit('sd-0','8',1.0),130);
+        s=0;
+        function lock1(){
+          if(s<8){
+            setDigit('sd-1',DIGITS[Math.floor(Math.random()*10)]);
+            setDigit('sd-2',DIGITS[Math.floor(Math.random()*10)]);
+            s++;setTimeout(lock1,44);
+          } else {
+            setDigit('sd-1','1',3.0);
+            setTimeout(()=>setDigit('sd-1','1',1.4),60);
+            setTimeout(()=>setDigit('sd-1','1',1.0),130);
+            s=0;
+            function lock2(){
+              if(s<7){
+                setDigit('sd-2',DIGITS[Math.floor(Math.random()*10)]);
+                s++;setTimeout(lock2,50);
+              } else {
+                setDigit('sd-2','5',3.0);
+                setTimeout(()=>setDigit('sd-2','5',1.4),60);
+                setTimeout(()=>setDigit('sd-2','5',1.0),130);
+                // Fire second shockwave on 5 lock
+                setTimeout(()=>{if(window._splashFireShock)window._splashFireShock();},80);
+                // All 3 pulse together
+                setTimeout(()=>{
+                  ['sd-0','sd-1','sd-2'].forEach(id=>setDigit(id,{'sd-0':'8','sd-1':'1','sd-2':'5'}[id],2.0));
+                  setTimeout(()=>['sd-0','sd-1','sd-2'].forEach(id=>setDigit(id,{'sd-0':'8','sd-1':'1','sd-2':'5'}[id],1.0)),120);
+                },300);
+                // Logo reveal — DM slams from left, app from right
+                setTimeout(()=>{
+                  const logo=document.getElementById('splash-logo-wrap');
+                  if(logo)logo.classList.add('show');
+                },520);
+                setTimeout(()=>{stopCanvas();endSplash();},1100);
+              }
+            }
+            setTimeout(lock2,180);
+          }
+        }
+        setTimeout(lock1,220);
+      }
+    }
+    lock0();
+  }
 }
 
 function endSplash(){
@@ -608,8 +769,9 @@ function initPlannerMap(){
 
 function renderPlannerUI(){
   const has = S.plan && S.plan.length > 0;
-  const badge = document.getElementById('plan-status-badge');
+  const badge  = document.getElementById('plan-status-badge');
   const noTask = document.getElementById('planner-no-task');
+
   if(!has){
     badge.textContent='Not Loaded'; badge.className='badge';
     if(noTask) noTask.style.display='block';
@@ -617,32 +779,30 @@ function renderPlannerUI(){
       const el=document.getElementById(id); if(el) el.style.display='none';
     });
     document.getElementById('start-job-section').style.display='none';
+    document.getElementById('plan-summary-block').style.display='none';
     return;
   }
+
   if(noTask) noTask.style.display='none';
   badge.textContent=S.plan.length+' Links'; badge.className='badge loaded';
-
-  const uniqueStops = new Set([...S.plan.map(p=>p.fromStop),...S.plan.map(p=>p.toStop)]);
-  document.getElementById('stat-links').textContent = S.plan.length;
-  document.getElementById('stat-stops').textContent = uniqueStops.size;
-  document.getElementById('stat-runs').textContent  = S.plan.some(p=>!p.skipRun2)?'2':'1';
   document.getElementById('plan-summary-block').style.display='block';
   document.getElementById('plan-inline-summary').style.display='flex';
-  document.getElementById('inline-links').textContent = S.plan.length + ' links';
 
-  ['optimise-card','planner-map-card','plan-links-card'].forEach(id=>{
+  const ss=new Set(); S.plan.forEach(l=>{ss.add(l.fromStop);ss.add(l.toStop);});
+  document.getElementById('stat-links').textContent = S.plan.length;
+  document.getElementById('stat-stops').textContent = ss.size;
+  document.getElementById('stat-runs').textContent  = S.plan.some(p=>!p.skipRun2)?'2':'1';
+
+  ['optimise-card','planner-map-card','plan-links-card','plan-export-card'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display='';
   });
-
-  updatePlannerMap();
-  renderLinksList();
-  updateDistSummary();
-  renderPlanExport();
-
   document.getElementById('start-job-section').style.display='';
-  document.getElementById('plan-export-card').style.display='';
-}
 
+  updateDistSummary();
+  if(S.plannerMap) updatePlannerMap();
+  renderLinksList();
+  renderPlanExport();
+}
 function updateDistSummary(){
   if(!S.plan.length) return;
   let linkKm=0, deadKm=0;
@@ -1641,13 +1801,18 @@ async function taskLookupAll(){
     try{cachedNewStops=JSON.parse(localStorage.getItem('dm_new_stops')||'{}');}catch(e){}
     (data.stops||[]).forEach(s=>{ const c=padStop(String(s.BSCode||s['BS Code']||'').trim()); const n=String(s.BSName||s['BS Name']||'').trim(); if(c)bsMap[c]=n; });
     (data.links||[]).forEach(l=>{ const k=padStop(String(l.FromStopCode||'').trim())+'-'+padStop(String(l.ToStopCode||'').trim()); lnkMap[k]=String(l.Service||'').trim(); });
-    if(!S.stops||!Object.keys(S.stops).length){
-      S.stops={};
-      (data.stops||[]).forEach(s=>{ const c=padStop(String(s.BSCode||'').trim()); if(!c)return; S.stops[c]={code:c,lat:parseFloat(s.Planned_Lat||0)||0,lng:parseFloat(s.Planned_Long||0)||0,name:String(s.BSName||c).trim()}; });
-      S.links={};
-      (data.links||[]).forEach(l=>{ const k=padStop(String(l.FromStopCode||'').trim())+'-'+padStop(String(l.ToStopCode||'').trim()); if(k)S.links[k]={service:String(l.Service||'').trim()}; });
-      savePlanCache();
-    }
+    // Always update S.stops with full lat/lng from reference data
+    (data.stops||[]).forEach(s=>{
+      const c=padStop(String(s.BSCode||'').trim()); if(!c)return;
+      S.stops[c]=S.stops[c]||{};
+      S.stops[c].code=c;
+      S.stops[c].name=String(s.BSName||c).trim();
+      S.stops[c].lat=parseFloat(s.Planned_Lat||0)||0;
+      S.stops[c].lng=parseFloat(s.Planned_Long||0)||0;
+    });
+    S.links={};
+    (data.links||[]).forEach(l=>{ const k=padStop(String(l.FromStopCode||'').trim())+'-'+padStop(String(l.ToStopCode||'').trim()); if(k)S.links[k]={service:String(l.Service||'').trim()}; });
+    savePlanCache();
     _taskRows.forEach(r=>{
       if(r.status!=='loading')return;
       const fc=padStop(r.from),tc=padStop(r.to);
