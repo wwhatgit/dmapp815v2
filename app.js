@@ -936,7 +936,7 @@ async function runOptimiser(){
     }
     if(!S.originalPlanOrder) S.originalPlanOrder=S.plan.map((_,i)=>i);
     const result=optimiseRoute(S.plan,S.stops,oLat,oLng,2,S.speedKmh||SPEED_KMH,customKm);
-    S.plan=result.plan; S.clusterResult=result;
+    S.plan=result.order.map(i=>S.plan[i]); S.clusterResult=result;
     S.journeySteps=[];
     document.getElementById('opt-status-badge').textContent='Optimised ✓';
     document.getElementById('opt-status-badge').className='badge loaded';
@@ -1841,11 +1841,17 @@ async function taskLookupAll(){
 function taskLoadPlan(){
   const valid=_taskRows.filter(r=>r.from&&r.to);
   if(!valid.length){toast('Add at least one link first','error');return;}
-  S.plan=[]; S.stops={}; S.links={}; S.clusterResult=null; S.journeySteps=[];
+  // Keep S.stops intact so lat/lng from taskLookupAll is preserved
+  S.plan=[]; S.links={}; S.clusterResult=null; S.journeySteps=[];
   valid.forEach((r,i)=>{
-    const p=r.pinnedFrom,q=r.pinnedTo;
-    if(!S.stops[r.from]) S.stops[r.from]={code:r.from,name:r.fromName||('NEW - '+r.from),lat:p?p.lat:0,lng:p?p.lng:0,isNew:r.isNewFrom||false};
-    if(!S.stops[r.to])   S.stops[r.to]  ={code:r.to,  name:r.toName  ||('NEW - '+r.to),  lat:q?q.lat:0,lng:q?q.lng:0,isNew:r.isNewTo  ||false};
+    const p=r.pinnedFrom, q=r.pinnedTo;
+    // Preserve existing coords; only override if we have a pinned location
+    const existF=S.stops[r.from]||{};
+    const existT=S.stops[r.to]  ||{};
+    S.stops[r.from]={code:r.from, name:r.fromName||existF.name||('NEW - '+r.from),
+      lat:p?p.lat:(existF.lat||0), lng:p?p.lng:(existF.lng||0), isNew:r.isNewFrom||false};
+    S.stops[r.to]  ={code:r.to,   name:r.toName  ||existT.name||('NEW - '+r.to),
+      lat:q?q.lat:(existT.lat||0), lng:q?q.lng:(existT.lng||0), isNew:r.isNewTo  ||false};
     S.plan.push({linkId:r.from+'-'+r.to,service:r.service||'—',sequence:i+1,fromStop:r.from,toStop:r.to,skipRun2:(r.runs||2)===1});
   });
   S.totalRuns=valid.some(r=>(r.runs||2)===2)?2:1;
