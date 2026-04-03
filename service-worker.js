@@ -2,7 +2,7 @@
    Built: 2026-03-24  Version: 2026.03.24.01
    MapLibre removed. Google Maps external navigation.
 */
-const CACHE_VER = 'dmapp-v2-2026.04.03.03';
+const CACHE_VER = 'dmapp-v2-2026.04.03.04';
 const APP_FILES = [
   './', './index.html', './app.js', './style.css',
   './optimiser.js', './manifest.json', './version.json'

@@ -332,13 +332,16 @@ function switchScreen(name){
 /* ══ COLLAPSIBLE CARDS ═══════════════════════════════════════════ */
 function initCollapsible(){
   document.querySelectorAll('.card-toggle').forEach(hdr=>{
-    hdr.addEventListener('click',()=>{
-      const tgt = document.getElementById(hdr.dataset.target);
-      const arr = hdr.querySelector('.chevron');
-      if(!tgt) return;
-      const open = !tgt.classList.contains('collapsed');
-      tgt.classList.toggle('collapsed', open);
-      if(arr) arr.classList.toggle('open', !open);
+    hdr.addEventListener('click',function(e){
+      if(e.target.closest('button,.list-actions')) return;
+      const tid=this.dataset.target; if(!tid) return;
+      const body=document.getElementById(tid);
+      const arr=document.getElementById('arrow-'+tid);
+      if(!body) return;
+      const open=body.classList.contains('open');
+      body.classList.toggle('open',!open);
+      if(arr) arr.classList.toggle('open',!open);
+      if(!open&&tid==='map-body'&&S.plannerMap) setTimeout(()=>S.plannerMap.invalidateSize(),300);
     });
   });
 }
@@ -723,6 +726,7 @@ function bindEvents(){
   document.querySelectorAll('.opt-btn').forEach(b=>b.addEventListener('click',()=>{
     document.querySelectorAll('.opt-btn').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
+    S.optStartMode=b.dataset.mode; // store for runOptimiser
   }));
 
   // Task
@@ -804,31 +808,31 @@ function renderPlannerUI(){
   renderPlanExport();
 }
 function updateDistSummary(){
-  if(!S.plan.length) return;
-  let linkKm=0, deadKm=0;
-  const steps = S.journeySteps.length ? S.journeySteps : buildJourneyStepsForCalc();
-  steps.forEach((step,i)=>{
-    const link = S.plan[step.planIdx];
-    const f=S.stops[link&&link.fromStop]||{}, t=S.stops[link&&link.toStop]||{};
-    if(f.lat&&t.lat) linkKm += optHaversine(f.lat,f.lng,t.lat,t.lng)/1000;
-    if(i>0&&step.run===1){
-      const prev=steps[i-1];
-      const plink=S.plan[prev.planIdx];
-      const pt=S.stops[plink&&plink.toStop]||{};
-      if(pt.lat&&f.lat) deadKm += optHaversine(pt.lat,pt.lng,f.lat,f.lng)/1000;
-    }
-  });
-  const totalKm = linkKm + deadKm;
-  const timeMin = Math.round(totalKm / (S.speedKmh||SPEED_KMH) * 60);
-  const h=Math.floor(timeMin/60), m=timeMin%60;
-  document.getElementById('dm-link-dist').textContent = linkKm.toFixed(1)+' km';
-  document.getElementById('dm-dead-dist').textContent = deadKm.toFixed(1)+' km';
-  document.getElementById('dm-total-dist').textContent= totalKm.toFixed(1)+' km';
-  document.getElementById('dm-est-time').textContent  = h>0?h+'h '+m+'m':m+'m';
-  document.getElementById('stat-est-dist').textContent= totalKm.toFixed(1);
-  document.getElementById('inline-dist').textContent  = totalKm.toFixed(1)+' km';
+  let lKm,dKm,totalKm,timeMin,timeStr;
+  if(S.journeySteps&&S.journeySteps.length){
+    // Walk every step tracking current position — counts all travel including dead-mileage
+    let dM=0,lM=0,cLat=S.lastPos?S.lastPos.lat:null,cLng=S.lastPos?S.lastPos.lng:null;
+    S.journeySteps.forEach(step=>{
+      const link=S.plan[step.planIdx];if(!link)return;
+      const f=S.stops[link.fromStop],t=S.stops[link.toStop];if(!f||!f.lat)return;
+      if(cLat!=null) dM+=optHaversine(cLat,cLng,f.lat,f.lng);
+      if(t&&t.lat){lM+=optHaversine(f.lat,f.lng,t.lat,t.lng);cLat=t.lat;cLng=t.lng;}
+    });
+    lKm=lM/1000;dKm=dM/1000;totalKm=lKm+dKm;
+  } else {
+    lKm=linkDistance(S.plan,S.stops);
+    dKm=calcDeadMileForOrder(S.plan,S.stops,S.plan.map((_,i)=>i),S.lastPos?S.lastPos.lat:null,S.lastPos?S.lastPos.lng:null);
+    totalKm=(lKm+dKm)*S.totalRuns;
+  }
+  timeMin=Math.round(totalKm/(S.speedKmh||SPEED_KMH)*60);
+  timeStr=timeMin>=60?(Math.floor(timeMin/60)+'h '+(timeMin%60)+'m'):(timeMin+'m');
+  document.getElementById('stat-est-dist').textContent=totalKm.toFixed(1);
+  document.getElementById('dm-link-dist').textContent=lKm.toFixed(2)+' km';
+  document.getElementById('dm-dead-dist').textContent=dKm.toFixed(2)+' km';
+  document.getElementById('dm-total-dist').textContent=totalKm.toFixed(2)+' km';
+  document.getElementById('dm-est-time').textContent=timeStr;
+  document.getElementById('inline-dist').textContent=totalKm.toFixed(1)+' km · '+timeStr;
 }
-
 function buildJourneyStepsForCalc(){
   if(!S.plan.length) return [];
   const steps=[];
@@ -1073,35 +1077,67 @@ function resetPlanOrder(){
   renderPlannerUI();
 }
 
-async function runOptimiser(){
-  const btn = document.getElementById('optimise-btn');
-  btn.textContent='⏳ Optimising…'; btn.disabled=true;
-  try{
-    const mode   = document.querySelector('.opt-btn.active')?.dataset.mode||'current';
-    const slider = parseFloat(document.getElementById('threshold-slider').value)||0;
-    const customKm = slider>0?slider:null;
-    let oLat=1.3521,oLng=103.8198;
-    if(mode==='current'&&S.lastPos){oLat=S.lastPos.lat;oLng=S.lastPos.lng;}
-    else if(mode==='current'){
-      await new Promise(r=>navigator.geolocation.getCurrentPosition(p=>{oLat=p.coords.latitude;oLng=p.coords.longitude;r();},()=>r(),{timeout:5000}));
+function runOptimiser(){
+  if(!S.plan.length){toast('No plan loaded','error');return;}
+  const btn=document.getElementById('optimise-btn');
+  btn.disabled=true;btn.textContent='⚡ Optimising…';
+  // Save original order as deep copy before first optimise
+  if(!S.originalPlanOrder) S.originalPlanOrder=S.plan.map(l=>Object.assign({},l));
+  let oLat=null,oLng=null;
+  const mode=document.querySelector('.opt-btn.active')?.dataset.mode||'current';
+  if(mode==='current'&&S.lastPos){oLat=S.lastPos.lat;oLng=S.lastPos.lng;}
+  const slEl=document.getElementById('threshold-slider');
+  const customKm=slEl&&parseFloat(slEl.value)>0?parseFloat(slEl.value):null;
+  // Use setTimeout so UI updates (button disabled) before heavy computation
+  setTimeout(()=>{
+    try{
+      const r=optimiseRoute(S.plan,S.stops,oLat,oLng,S.totalRuns,S.speedKmh||SPEED_KMH,customKm);
+      S.clusterResult=r;
+      // Use journey steps directly from optimiser — already correct
+      S.journeySteps=r.journeySteps;
+      // Remap S.plan to optimised order derived from journeySteps
+      const seen=new Set(),po=[];
+      r.journeySteps.forEach(s=>{if(!seen.has(s.planIdx)){seen.add(s.planIdx);po.push(s.planIdx);}});
+      S.plan.forEach((_,i)=>{if(!seen.has(i))po.push(i);});
+      const orig=S.plan.slice();
+      S.plan=po.map(i=>orig[i]);
+      // Build index map: old plan index → new plan index
+      const idxMap={};po.forEach((oi,ni)=>idxMap[oi]=ni);
+      // Remap journeySteps planIdx to new positions
+      S.journeySteps=S.journeySteps.map(s=>Object.assign({},s,{planIdx:idxMap[s.planIdx]}));
+      // CRITICAL: remap cluster member indices to match new S.plan positions
+      if(S.clusterResult&&S.clusterResult.clusters){
+        S.clusterResult.clusters=S.clusterResult.clusters.map(members=>
+          members.map(oldIdx=>idxMap[oldIdx]).filter(ni=>ni!==undefined)
+        );
+      }
+      S.plan.forEach((l,i)=>l.sequence=i+1);
+      const badge=document.getElementById('opt-status-badge');
+      badge.textContent=r.numClusters+' zones ✓';badge.className='badge opt-status-done';
+      showOptResult(r);
+      updateDistSummary();renderLinksList();updatePlannerMap();
+      toast('Optimised — '+r.numClusters+' zone'+(r.numClusters!==1?'s':'')+' · saved '+r.savings.toFixed(2)+' km','success');
+    }catch(e){
+      console.error(e);
+      toast('Optimiser error: '+e.message,'error');
     }
-    if(!S.originalPlanOrder) S.originalPlanOrder=S.plan.map((_,i)=>i);
-    const result=optimiseRoute(S.plan,S.stops,oLat,oLng,2,S.speedKmh||SPEED_KMH,customKm);
-    S.plan=result.order.map(i=>S.plan[i]); S.clusterResult=result;
-    // Build journey steps so renderZoneList has data immediately
-    rebuildJourneyFromZones();
-    document.getElementById('opt-status-badge').textContent='Optimised ✓';
-    document.getElementById('opt-status-badge').className='badge loaded';
-    const el=document.getElementById('opt-result');
-    el.textContent=`${result.numClusters} zone${result.numClusters!==1?'s':''}  ·  ${result.totalKm.toFixed(1)} km total`;
-    el.classList.remove('hidden');
-    savePlanCache(); renderPlannerUI();
-    toast('Route optimised — '+result.numClusters+' zone(s)','success');
-  }catch(e){
-    toast('Optimise failed: '+e.message,'error');
-  }finally{
-    btn.textContent='⚡ Auto-Optimise Route'; btn.disabled=false;
-  }
+    btn.disabled=false;btn.textContent='⚡ Auto-Optimise Route';
+  },50);
+}
+
+function showOptResult(r){
+  const el=document.getElementById('opt-result');
+  el.classList.remove('hidden');
+  const slEl=document.getElementById('threshold-slider');
+  const slVal=slEl?parseFloat(slEl.value):0;
+  const thStr=slVal>0?(slVal+' km gap'):('auto ('+((r.threshold||0)/1000).toFixed(2)+' km)');
+  el.innerHTML='<div class="opt-result-grid">'
+    +'<div class="opt-r-item"><div class="opt-r-val" style="color:var(--green)">'+r.linkKm.toFixed(2)+'</div><div class="opt-r-lbl">Link km</div></div>'
+    +'<div class="opt-r-item"><div class="opt-r-val" style="color:var(--orange)">'+r.deadKm.toFixed(2)+'</div><div class="opt-r-lbl">Dead-mile</div></div>'
+    +'<div class="opt-r-item"><div class="opt-r-val" style="color:var(--blue)">'+r.totalKm.toFixed(2)+'</div><div class="opt-r-lbl">Total km</div></div>'
+    +'<div class="opt-r-item"><div class="opt-r-val" style="color:var(--orange)">'+r.timeStr+'</div><div class="opt-r-lbl">Est. time</div></div>'
+    +'<div class="opt-r-item"><div class="opt-r-val" style="color:var(--purple)">'+r.savings.toFixed(2)+'</div><div class="opt-r-lbl">Saved km</div></div>'
+    +'</div><div class="opt-chain-info">'+r.numClusters+' zone'+(r.numClusters!==1?'s':'')+' · '+thStr+'</div>';
 }
 
 function startJob(){
