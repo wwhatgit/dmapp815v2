@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+  <meta name="theme-color" content="#0b0f1a"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <title>DMapp · BIS v2</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ══ SPLASH ══ -->
+<div id="splash">
+  <canvas id="splash-canvas"></canvas>
+  <div id="splash-content">
+    <div id="splash-digits-wrap">
+      <div class="sp-digit-cell" id="sd-0"></div>
+      <div class="sp-digit-cell" id="sd-1"></div>
+      <div class="sp-digit-cell" id="sd-2"></div>
+    </div>
+    <div id="splash-logo-wrap">
+      <span id="splash-dm">DM</span><span id="splash-app">app</span>
+    </div>
+    <div id="splash-name-box" class="hidden">
+      <div class="splash-name-label">Driver Name</div>
+      <input type="text" id="splash-name-input" class="splash-name-input"
+             placeholder="Enter your name…" autocomplete="off" spellcheck="false" maxlength="40"/>
+      <button id="splash-enter-btn" class="splash-enter-btn">Enter App →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODALS ══ -->
+<div id="location-modal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-box">
+    <div class="modal-header"><h2>📡 Location Access</h2><button class="close-btn" id="loc-close-btn">✕</button></div>
+    <div class="modal-body">
+      <div class="loc-title">GNSS Required for Recording</div>
+      <div class="loc-desc">DMapp uses your device's GNSS to record distance between bus stops.</div>
+      <div id="loc-https-warn" class="status-msg error hidden">⚠ <b>Not served over HTTPS.</b></div>
+      <div id="loc-denied-warn" class="status-msg error hidden">
+        ⚠ <b>Location permission denied.</b><br><br>
+        <b>Android Chrome:</b> Tap 🔒 → Permissions → Location → Allow → Reload<br><br>
+        <b>iPhone Safari:</b> Settings → Safari → Location → Allow
+      </div>
+      <div id="loc-actions">
+        <button class="btn btn-primary full-width" id="loc-allow-btn">Allow Location Access</button>
+        <button class="btn btn-ghost full-width" id="loc-deny-btn">Skip (no distance recording)</button>
+      </div>
+      <div id="loc-status" class="status-msg hidden"></div>
+    </div>
+  </div>
+</div>
+
+<div id="flag-modal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-box">
+    <div class="modal-header"><h2 id="flag-modal-title">Confirm Stop Position</h2></div>
+    <div class="modal-body">
+      <div id="flag-stop-info" class="flag-stop-info"></div>
+      <div id="flag-distance-info" class="flag-distance"></div>
+      <div class="flag-choices">
+        <button class="flag-btn flag-atstop" id="flag-atstop-btn">
+          <span class="flag-icon">✅</span>
+          <div class="flag-label">At Stop</div>
+          <div class="flag-desc">I am at the correct bus stop position</div>
+        </button>
+        <button class="flag-btn flag-relocated" id="flag-relocated-btn">
+          <span class="flag-icon">⚠️</span>
+          <div class="flag-label">Stop Relocated</div>
+          <div class="flag-desc">This stop has moved from its planned position</div>
+        </button>
+      </div>
+      <button class="btn btn-ghost full-width" id="flag-cancel-btn" style="margin-top:4px">✕ Cancel — go back</button>
+    </div>
+  </div>
+</div>
+
+<div id="resume-modal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-box">
+    <div class="modal-header"><h2>Resume Session?</h2></div>
+    <div class="modal-body">
+      <div class="loc-title" id="resume-title">Saved session found</div>
+      <div class="loc-desc" id="resume-desc">You have a previous session in progress.</div>
+      <button class="btn btn-primary full-width" id="resume-yes-btn">▶ Resume Session</button>
+      <button class="btn btn-ghost full-width" id="resume-no-btn">✕ Start Fresh</button>
+    </div>
+  </div>
+</div>
+
+<!-- Plan paste modal -->
+<div id="plan-paste-modal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-box">
+    <div class="modal-header"><h2>📋 Load Shared Plan</h2><button class="close-btn" id="plan-paste-close">✕</button></div>
+    <div class="modal-body">
+      <label class="field-label">Paste plan text (from WhatsApp or saved file)</label>
+      <textarea id="plan-paste-input" class="task-paste-box" rows="10"
+        placeholder="DMAPP v2&#10;DRIVER: JOHN&#10;DATE: 2026-03-22&#10;---&#10;Z1 x2: 26419-26429|26311-26321&#10;..."></textarea>
+      <div id="plan-paste-status" class="status-msg hidden"></div>
+      <button class="btn btn-primary full-width" id="plan-paste-confirm-btn" style="margin-top:10px">↳ Load This Plan</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Stop Pin Modal -->
+<div id="pin-modal" class="modal hidden">
+  <div class="pin-modal-box">
+    <div class="pin-modal-header">
+      <span id="pin-modal-title">📍 Pin New Stop</span>
+      <button id="pin-modal-cancel" class="close-btn">✕</button>
+    </div>
+    <div class="pin-coord-bar">
+      <input type="number" id="pin-lat-input" class="pin-coord-input" placeholder="Latitude" step="any"/>
+      <input type="number" id="pin-lng-input" class="pin-coord-input" placeholder="Longitude" step="any"/>
+      <button id="pin-goto-btn" class="btn btn-ghost btn-sm">Go →</button>
+    </div>
+    <div id="pin-map" class="pin-map"></div>
+    <div class="pin-crosshair">＋</div>
+    <div class="pin-modal-footer">
+      <div id="pin-coord-display" class="pin-coord-display">Tap map to place pin</div>
+      <button id="pin-confirm-btn" class="btn btn-primary" disabled>✓ Set this location</button>
+    </div>
+  </div>
+</div>
+
+<!-- Route Ladder drawer -->
+<div id="ladder-drawer" class="hidden">
+  <div id="ladder-header">
+    <span id="ladder-title">Route Ladder</span>
+    <button id="ladder-close-btn">✕</button>
+  </div>
+  <div id="ladder-body"></div>
+</div>
+<div id="ladder-backdrop" class="hidden"></div>
+
+<!-- ══ HEADER ══ -->
+<header id="app-header" class="app-hidden">
+  <div class="header-left">
+    <span class="header-title" id="header-title-click">DM<span class="accent">app</span> <span class="v2-badge">v2</span></span>
+  </div>
+  <div class="header-right">
+    <div class="gnss-pill gnss-waiting" id="gnss-status-pill">
+      <span class="gnss-dot"></span>
+      <span id="gnss-label">GNSS</span>
+    </div>
+    <button class="icon-btn" id="settings-btn" title="Settings">⚙</button>
+  </div>
+</header>
+
+<!-- ══ NAV ══ -->
+<nav id="main-nav" class="app-hidden">
+  <button class="nav-tab active" data-screen="task"><span class="tab-icon">📝</span><span>Task</span></button>
+  <button class="nav-tab" data-screen="planner"><span class="tab-icon">📋</span><span>Planner</span></button>
+  <button class="nav-tab" data-screen="drive"><span class="tab-icon">🚌</span><span>Drive</span></button>
+  <button class="nav-tab" data-screen="overview"><span class="tab-icon">📊</span><span>Overview</span></button>
+</nav>
+
+<!-- Settings Modal -->
+<div id="settings-modal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-box">
+    <div class="modal-header"><h2>Settings</h2><button class="close-btn" id="settings-close">✕</button></div>
+    <div class="modal-body">
+      <label class="field-label">Driver Name / ID</label>
+      <input type="text" id="driver-name-input" class="text-input" placeholder="e.g. DRV001"/>
+      <p class="hint">Appears on every row saved to the Result sheet.</p>
+      <button class="btn btn-primary full-width" id="save-settings-btn">Save Settings</button>
+      <div class="cache-clear-section">
+        <div class="cache-divider">Troubleshooting</div>
+        <button class="btn btn-cache-clear full-width" id="clear-cache-btn">🗑 Clear App Cache &amp; Reload</button>
+        <p class="hint" style="text-align:center;margin-top:6px">Use if app is not updating or behaving unexpectedly.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Export Modal -->
+<div id="export-modal" class="modal hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-box">
+    <div class="modal-header"><h2>Export Results</h2><button class="close-btn" id="export-cancel-btn">✕</button></div>
+    <div class="modal-body">
+      <div class="export-info" id="export-modal-info">0 records</div>
+      <button class="btn btn-export-dl full-width" id="export-download-btn"><span style="font-size:20px">⬇</span>&nbsp; Download CSV File</button>
+      <button class="btn btn-export-wa full-width" id="export-whatsapp-btn"><span style="font-size:20px">💬</span>&nbsp; Share via WhatsApp</button>
+    </div>
+  </div>
+</div>
+
+<!-- Admin Overlay -->
+<div id="admin-overlay" class="admin-overlay hidden">
+  <div id="admin-pw-screen">
+    <div class="admin-pw-box">
+      <div class="admin-pw-title">🔐 Admin Access</div>
+      <input type="password" id="admin-pw-input" class="admin-pw-input" placeholder="Password" inputmode="numeric" maxlength="10"/>
+      <button id="admin-pw-btn" class="admin-pw-btn">Unlock →</button>
+      <div id="admin-pw-err" class="admin-pw-err hidden">Wrong password</div>
+    </div>
+  </div>
+  <div id="admin-panel" class="hidden">
+    <div class="admin-panel-header">
+      <span class="admin-panel-title">⚙ DMapp Admin v2</span>
+      <button id="admin-close-btn" class="admin-close-btn">✕ Close</button>
+    </div>
+    <div class="admin-panel-body">
+      <div class="admin-section-title">📡 Google Apps Script</div>
+      <label class="admin-field-lbl">Apps Script URL</label>
+      <textarea id="admin-as-url" class="admin-textarea" rows="2"></textarea>
+      <div class="admin-section-title">📊 Google Sheet</div>
+      <label class="admin-field-lbl">Permanent Sheet ID</label>
+      <input type="text" id="admin-sheet-id" class="admin-input"/>
+      <label class="admin-field-lbl">Sheet URL (auto)</label>
+      <input type="text" id="admin-sheet-url" class="admin-input" readonly/>
+      <a id="admin-sheet-link" href="#" target="_blank" class="admin-link">Open sheet →</a>
+      <div class="admin-section-title">🗺 Routing</div>
+      <label class="admin-field-lbl">OSRM Base URL (Planner estimates)</label>
+      <input type="text" id="admin-osrm-url" class="admin-input"/>
+      <div class="admin-section-title">📡 GNSS</div>
+      <label class="admin-field-lbl">Good Accuracy Threshold (metres)</label>
+      <input type="number" id="admin-gnss-good" class="admin-input" min="5" max="50"/>
+      <label class="admin-field-lbl">Proximity Alert Distance (metres)</label>
+      <input type="number" id="admin-prox-dist" class="admin-input" min="10" max="200"/>
+      <div class="admin-field-hint">Beep + alert bar fires when driver within this distance of next stop.</div>
+      <label class="admin-field-lbl">Speed Estimate (km/h)</label>
+      <input type="number" id="admin-speed" class="admin-input" min="10" max="100"/>
+      <div class="admin-section-title">📱 App</div>
+      <label class="admin-field-lbl">App Version</label>
+      <input type="text" id="admin-app-ver" class="admin-input" readonly/>
+      <div class="admin-section-title">🐛 Debug Info</div>
+      <div id="admin-debug-info" class="admin-debug-box"></div>
+      <div class="admin-btn-row">
+        <button id="admin-save-btn" class="admin-save-btn">💾 Save Overrides</button>
+        <button id="admin-reset-btn" class="admin-reset-btn">↺ Reset Defaults</button>
+      </div>
+      <div id="admin-save-msg" class="admin-save-msg hidden"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: TASK ══ -->
+<section id="screen-task" class="screen active app-hidden">
+  <div class="screen-content">
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">📝 Task</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="hint-txt" id="task-count-badge"></span>
+          <button class="btn btn-ghost btn-sm" id="task-load-shared-btn">📋 Load Plan</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <label class="field-label">Paste Links</label>
+        <textarea id="task-paste-input" class="task-paste-box"
+          placeholder="26419-26429;26311-26321;25811-25091&#10;Semicolon-separated · FromStop-ToStop"></textarea>
+        <div class="btn-row" style="margin-top:6px">
+          <button class="btn btn-primary flex1" id="task-parse-btn">↳ Parse</button>
+          <button class="btn btn-ghost" id="task-clear-btn">✕ Clear All</button>
+        </div>
+        <div id="task-parse-status" class="status-msg hidden"></div>
+        <div class="task-manual-row">
+          <input type="text" id="task-manual-from" class="task-code-input"
+                 placeholder="00000" maxlength="5" inputmode="numeric" pattern="[0-9]*" autocomplete="off"/>
+          <span class="task-dash">→</span>
+          <input type="text" id="task-manual-to" class="task-code-input"
+                 placeholder="00000" maxlength="5" inputmode="numeric" pattern="[0-9]*" autocomplete="off"/>
+          <button class="btn btn-ghost btn-sm" id="task-add-btn">＋</button>
+        </div>
+        <div class="task-table-wrap">
+          <table class="task-table" id="task-table">
+            <thead>
+              <tr>
+                <th class="tc-num">#</th>
+                <th class="tc-code">FROM</th>
+                <th class="tc-name">Name</th>
+                <th class="tc-code">TO</th>
+                <th class="tc-name">Name</th>
+                <th class="tc-svc">SVC</th>
+                <th class="tc-runs">Runs</th>
+                <th class="tc-del"></th>
+              </tr>
+            </thead>
+            <tbody id="task-tbody">
+              <tr class="task-empty-row"><td colspan="8">No links yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div id="task-footer">
+      <div class="task-meta-row">
+        <span class="field-label" style="margin:0;font-size:13px">Runs per link
+          <span style="font-weight:400;color:var(--text-muted);font-size:11px">(applies to all)</span>:
+        </span>
+        <div class="run-selector run-selector-sm">
+          <button class="run-btn run-btn-sm active" data-runs="2">× 2</button>
+          <button class="run-btn run-btn-sm" data-runs="1">× 1</button>
+        </div>
+      </div>
+      <button class="btn btn-start-job full-width" id="task-load-plan-btn" disabled>
+        ▶ Load Plan → Planner
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ══ SCREEN: PLANNER ══ -->
+<section id="screen-planner" class="screen hidden app-hidden">
+  <div class="screen-content">
+    <div class="card" id="card-load">
+      <div class="card-hdr card-toggle" data-target="load-body">
+        <div class="card-hdr-left">
+          <span class="chevron open" id="arrow-load-body">▼</span>
+          <span class="card-title">Plan</span>
+          <span class="badge" id="plan-status-badge">Not Loaded</span>
+        </div>
+        <div id="plan-inline-summary" style="display:none">
+          <span class="inline-stat" id="inline-links">—</span>
+          <span class="inline-sep">·</span>
+          <span class="inline-stat blue" id="inline-dist">—</span>
+        </div>
+      </div>
+      <div class="collapsible open" id="load-body">
+        <div class="card-body">
+          <div id="load-status" class="status-msg hidden"></div>
+          <div id="plan-summary-block" style="display:none">
+            <div class="stats-row">
+              <div class="stat-box"><div class="stat-val" id="stat-links">0</div><div class="stat-lbl">Links</div></div>
+              <div class="stat-box"><div class="stat-val" id="stat-stops">0</div><div class="stat-lbl">Stops</div></div>
+              <div class="stat-box"><div class="stat-val" id="stat-runs">2</div><div class="stat-lbl">Runs</div></div>
+              <div class="stat-box"><div class="stat-val blue" id="stat-est-dist">—</div><div class="stat-lbl">Est. km</div></div>
+            </div>
+            <div class="dist-row" id="dist-row">
+              <div class="dr-item"><span class="dr-val" id="dm-link-dist">—</span><span class="dr-lbl">Link km</span></div>
+              <span class="dr-sep">+</span>
+              <div class="dr-item"><span class="dr-val orange" id="dm-dead-dist">—</span><span class="dr-lbl">Dead-mile</span></div>
+              <span class="dr-sep">=</span>
+              <div class="dr-item"><span class="dr-val blue" id="dm-total-dist">—</span><span class="dr-lbl">Total/run</span></div>
+              <span class="dr-sep">·</span>
+              <div class="dr-item"><span class="dr-val green" id="dm-est-time">—</span><span class="dr-lbl">Est. time</span></div>
+            </div>
+          </div>
+          <div id="planner-no-task" class="empty-state" style="display:none;margin:8px 0">
+            No plan loaded — go to <b>Task</b> tab and add links first.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="optimise-card" style="display:none">
+      <div class="card-hdr card-toggle" data-target="optimise-body">
+        <div class="card-hdr-left">
+          <span class="chevron open" id="arrow-optimise-body">▼</span>
+          <span class="card-title">Route Optimiser</span>
+          <span class="badge" id="opt-status-badge">Not run</span>
+        </div>
+      </div>
+      <div class="collapsible open" id="optimise-body">
+        <div class="card-body">
+          <div class="opt-start-row">
+            <span class="field-label">Start from</span>
+            <div class="opt-start-options">
+              <button class="opt-btn active" data-mode="current">📍 My location</button>
+              <button class="opt-btn" data-mode="first">🔢 Task order</button>
+            </div>
+          </div>
+          <div class="threshold-row">
+            <div class="threshold-label"><span>Zone gap limit</span><span class="threshold-val" id="threshold-display">Auto</span></div>
+            <div class="threshold-slider-wrap">
+              <span class="thr-tick">Auto</span>
+              <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="5" step="0.1" value="0"/>
+              <span class="thr-tick">5 km</span>
+            </div>
+          </div>
+          <button class="btn btn-optimise full-width" id="optimise-btn">⚡ Auto-Optimise Route</button>
+          <div id="opt-result" class="opt-result hidden"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="planner-map-card" style="display:none">
+      <div class="card-hdr card-toggle" data-target="map-body">
+        <div class="card-hdr-left">
+          <span class="chevron open" id="arrow-map-body">▼</span>
+          <span class="card-title">Route Map</span>
+        </div>
+        <div class="map-legend">
+          <span class="leg"><span class="leg-dot green-dot"></span>From</span>
+          <span class="leg"><span class="leg-dot red-dot"></span>To</span>
+          <span class="leg"><span class="leg-line blue-line"></span>Link</span>
+          <span class="leg"><span class="leg-line orange-line"></span>Dead</span>
+        </div>
+      </div>
+      <div class="collapsible open" id="map-body">
+        <div id="planner-map" class="map-box map-tall"></div>
+      </div>
+    </div>
+
+    <div class="card" id="plan-links-card" style="display:none">
+      <div class="card-hdr card-toggle" data-target="links-body">
+        <div class="card-hdr-left">
+          <span class="chevron open" id="arrow-links-body">▼</span>
+          <span class="card-title">Links to Measure</span>
+        </div>
+        <div class="list-actions" onclick="event.stopPropagation()">
+          <span class="hint-txt">Tap # to move</span>
+          <button class="btn btn-ghost btn-sm" id="reset-order-btn">↺ Reset</button>
+        </div>
+      </div>
+      <div class="collapsible open" id="links-body">
+        <div id="plan-links-list" class="links-list"></div>
+      </div>
+    </div>
+
+    <!-- Plan Export card -->
+    <div class="card" id="plan-export-card" style="display:none">
+      <div class="card-hdr card-toggle" data-target="export-body">
+        <div class="card-hdr-left">
+          <span class="chevron open" id="arrow-export-body">▼</span>
+          <span class="card-title">Share Plan</span>
+        </div>
+      </div>
+      <div class="collapsible open" id="export-body">
+        <div class="card-body">
+          <p class="hint">Share this plan with drivers via WhatsApp. They paste it in Task tab → Load Plan.</p>
+          <div id="plan-compact-text" class="plan-text-box"></div>
+          <div class="btn-row" style="margin-top:8px">
+            <button class="btn btn-primary flex1" id="copy-compact-btn">📋 Copy</button>
+            <button class="btn btn-ghost flex1" id="download-detailed-btn">⬇ Download .txt</button>
+          </div>
+          <div id="plan-export-status" class="status-msg hidden"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="start-job-section" style="display:none">
+      <button class="btn btn-start-job full-width" id="start-job-btn">▶ START JOB</button>
+    </div>
+  </div>
+</section>
+
+<!-- ══ SCREEN: DRIVE (Recording Console) ══ -->
+<section id="screen-drive" class="screen hidden app-hidden">
+
+  <!-- Proximity alert bar -->
+  <div id="proximity-alert" class="proximity-alert hidden">
+    <span class="prox-icon">🔔</span>
+    <span id="proximity-alert-text">Near stop — tap START</span>
+  </div>
+
+  <!-- Resume banner -->
+  <div id="resume-banner" class="hidden">
+    <div id="resume-banner-text">Unfinished session found</div>
+    <div id="resume-banner-actions">
+      <button class="btn-banner-resume" id="banner-resume-btn">▶ Continue</button>
+      <button class="btn-banner-fresh" id="banner-fresh-btn">✕ Start Fresh</button>
+    </div>
+  </div>
+
+  <!-- Status strip -->
+  <div id="drive-strip">
+    <div id="drive-strip-top">
+      <div id="drive-badges">
+        <span class="zone-badge hidden" id="drive-zone-badge">Z1</span>
+        <span class="link-badge" id="drive-link-id">—</span>
+        <span class="run-badge" id="drive-run-badge">RUN 1</span>
+      </div>
+      <div id="drive-strip-actions">
+        <button class="strip-action strip-skip" id="skip-link-btn"><span class="sa-icon">⏭</span><span class="sa-lbl">Skip</span></button>
+        <button class="strip-action strip-pause" id="pause-btn"><span class="sa-icon">⏸</span><span class="sa-lbl">Pause</span></button>
+        <button class="strip-action" id="ladder-btn" title="Route Ladder"><span class="sa-icon">☰</span><span class="sa-lbl">Ladder</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Link info panel -->
+  <div id="drive-link-panel">
+    <div class="drive-stop-row drive-stop-from">
+      <div class="ds-dir-badge ds-from">FROM</div>
+      <div class="ds-info">
+        <div class="ds-code" id="drive-from-code">—</div>
+        <div class="ds-name" id="drive-from-name">—</div>
+      </div>
+    </div>
+    <div class="drive-stop-arrow">↓</div>
+    <div class="drive-stop-row drive-stop-to">
+      <div class="ds-dir-badge ds-to">TO</div>
+      <div class="ds-info">
+        <div class="ds-code" id="drive-to-code">—</div>
+        <div class="ds-name" id="drive-to-name">—</div>
+      </div>
+    </div>
+    <div class="drive-meta-row">
+      <span class="svc-badge" id="drive-service">SVC —</span>
+      <span id="drive-progress-label" class="progress-inline">0/0</span>
+      <span id="accuracy-pill" class="acc-inline">±—m</span>
+      <span id="drive-mute-btn" class="mute-btn" title="Toggle beep">🔔</span>
+    </div>
+  </div>
+
+  <!-- Navigate button (per-link) -->
+  <div id="drive-nav-section">
+    <button id="nav-to-from-btn" class="btn-gmaps-nav">
+      <span class="gmaps-icon">🗺</span>
+      <span id="nav-to-from-label">Navigate to FROM stop</span>
+      <span class="gmaps-ext">↗</span>
+    </button>
+  </div>
+
+  <!-- GNSS status bar -->
+  <div id="drive-gnss-bar">
+    <div class="gnss-bar-item">
+      <span class="gnss-bar-icon" id="gnss-bar-icon">📡</span>
+      <span id="gnss-bar-acc">±—m</span>
+    </div>
+    <div class="gnss-bar-divider">|</div>
+    <div class="gnss-bar-item">
+      <span class="gnss-bar-lbl">Recorded:</span>
+      <span id="gnss-bar-dist">0.000 km</span>
+    </div>
+  </div>
+
+  <!-- START / STOP / NEXT -->
+  <div id="drive-actions">
+    <button class="daction start" id="start-measure-btn">
+      <span class="da-icon">●</span><span class="da-lbl">START</span>
+    </button>
+    <button class="daction stop" id="stop-measure-btn" disabled>
+      <span class="da-icon">■</span><span class="da-lbl">STOP</span>
+    </button>
+    <button class="daction next" id="next-link-btn" disabled>
+      <span class="da-icon">▶</span><span class="da-lbl">NEXT</span>
+    </button>
+  </div>
+
+  <!-- Remarks -->
+  <input type="text" id="remarks-input" class="remarks-input" placeholder="Remarks (optional)…"/>
+
+  <!-- Zone Navigation -->
+  <div id="zone-nav-section">
+    <div class="zone-nav-header">
+      <span class="zone-nav-title">🗺 Zone Navigation</span>
+      <span class="zone-nav-hint">Opens Google Maps in new tab</span>
+    </div>
+    <div id="zone-nav-list"></div>
+  </div>
+
+  <!-- Progress bar -->
+  <div id="drive-progress-bar-wrap">
+    <div id="drive-progress-bar"><div id="drive-progress-fill"></div></div>
+  </div>
+
+  <!-- Hidden accumulators -->
+  <div style="display:none">
+    <span id="gps-lat">0</span><span id="gps-lng">0</span>
+    <span id="gps-dist-display">0.000</span>
+  </div>
+</section>
+
+<!-- ══ SCREEN: OVERVIEW ══ -->
+<section id="screen-overview" class="screen hidden app-hidden">
+  <div class="screen-content">
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">Session Summary</span>
+        <button class="btn btn-ghost btn-sm" id="export-btn">⬆ Export CSV</button>
+      </div>
+      <div class="card-body">
+        <div class="stats-row">
+          <div class="stat-box"><div class="stat-val green" id="ov-completed">0</div><div class="stat-lbl">Done</div></div>
+          <div class="stat-box"><div class="stat-val orange" id="ov-pending">0</div><div class="stat-lbl">Pending</div></div>
+          <div class="stat-box"><div class="stat-val blue" id="ov-total-dist">0.0</div><div class="stat-lbl">km</div></div>
+          <div class="stat-box"><div class="stat-val" id="ov-total-records">0</div><div class="stat-lbl">Records</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-hdr">
+        <span class="card-title">Recorded Results</span>
+        <button class="btn btn-ghost btn-sm" id="refresh-results-btn">↻ Refresh</button>
+      </div>
+      <div id="results-table-wrap">
+        <div class="empty-state">No records yet.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="optimiser.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
