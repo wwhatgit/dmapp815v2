@@ -1,6 +1,6 @@
 {
-  "name": "DMapp BIS v2",
-  "short_name": "DMapp v2",
+  "name": "DM Logger",
+  "short_name": "DM Logger",
   "description": "Field Distance Measurement for Bus Links",
   "start_url": "./index.html",
   "display": "standalone",
